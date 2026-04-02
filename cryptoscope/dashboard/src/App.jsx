@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import Dashboard from './components/Dashboard'
 import StrategyBuilder from './components/options/StrategyBuilder'
-import { Search, Layers } from 'lucide-react'
+import SpotFuturesAnalyzer from './components/spotfutures/SpotFuturesAnalyzer'
+import { Search, Layers, Globe } from 'lucide-react'
 import './index.css'
 
 function App() {
@@ -26,6 +27,13 @@ function App() {
             <Search size={15} /> Market Briefs
           </button>
           <button
+            id="nav-spot-futures"
+            className={`nav-link ${activePage === 'spot-futures' ? 'active' : ''}`}
+            onClick={() => setActivePage('spot-futures')}
+          >
+            <Globe size={15} /> Spot &amp; Futures
+          </button>
+          <button
             id="nav-options"
             className={`nav-link ${activePage === 'options' ? 'active' : ''}`}
             onClick={() => setActivePage('options')}
@@ -38,6 +46,7 @@ function App() {
       {/* ── Page Content ── */}
       <div className="page-content">
         {activePage === 'dashboard' && <Dashboard />}
+        {activePage === 'spot-futures' && <SpotFuturesAnalyzer />}
         {activePage === 'options' && <StrategyBuilder />}
       </div>
     </>
@@ -45,3 +54,4 @@ function App() {
 }
 
 export default App
+

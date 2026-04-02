@@ -3,6 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const { getRecentBriefs } = require('../data/database');
 const { analyzeStrategy, STRATEGIES, buildMockOptionsChain } = require('../optionsEngine');
+const { runSpotFuturesAnalysis } = require('../spotFuturesEngine');
 
 const app = express();
 app.use(cors());
@@ -77,6 +78,25 @@ app.post('/api/options/analyze', async (req, res) => {
 
   } catch (err) {
     console.error('[webApi] Options analyze error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─── SPOT / FUTURES STRATEGY ENDPOINTS ───────────────────────────────────────
+
+/**
+ * POST /api/spot-futures/analyze
+ * Fetches live Binance data, computes all indicators, runs 7-strategy AI analysis
+ * Body: { asset: "BTC/USDT", timeframe: "15m" }
+ */
+app.post('/api/spot-futures/analyze', async (req, res) => {
+  try {
+    const { asset = 'BTC/USDT', timeframe = '15m' } = req.body;
+    console.log(`[webApi] Spot/Futures analysis requested: ${asset} (${timeframe})`);
+    const analysis = await runSpotFuturesAnalysis(asset, timeframe);
+    res.json({ success: true, analysis });
+  } catch (err) {
+    console.error('[webApi] Spot/Futures analyze error:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });
