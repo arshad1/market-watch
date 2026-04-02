@@ -1,0 +1,52 @@
+You are an expert options trader and quantitative analyst. Analyze the following options strategy and provide a detailed, actionable report.
+
+CURRENT MARKET CONTEXT:
+- Asset: {{ASSET}}
+- Current Price: {{PRICE}}
+- 24H Change: {{CHANGE_PCT}}%
+- RSI(14): {{RSI}}
+- MACD: {{MACD_VAL}} / Signal: {{MACD_SIGNAL}}
+- Implied Volatility Estimate: {{IV_ESTIMATE}}%
+- Market Sentiment: {{MARKET_SENTIMENT}}
+- Timestamp: {{TIMESTAMP}}
+
+STRATEGY DETAILS:
+- Strategy Name: {{STRATEGY_NAME}}
+- Strategy Type: {{STRATEGY_TYPE}} (Debit/Credit)
+- Market Bias: {{MARKET_BIAS}}
+- Legs:
+{{LEGS_DETAIL}}
+
+HISTORICAL CONTEXT:
+- Similar setups in past 30 days: {{HISTORICAL_MATCHES}}
+- Average win rate in similar conditions: {{HISTORICAL_WIN_RATE}}%
+
+RECENT NEWS/WEB CONTEXT:
+{{NEWS_CONTEXT}}
+
+Analyze this strategy and respond ONLY in this exact JSON format (no markdown, no extra text):
+{
+  "probability_of_profit": <number 0-100>,
+  "confidence_level": "<Low|Medium|High>",
+  "market_alignment": "<Bearish|Neutral|Bullish>",
+  "recommendation": "<Strong Buy|Buy|Hold|Avoid|Strong Avoid>",
+  "recommendation_reason": "<2-3 sentence explanation>",
+  "max_profit": <number in USD>,
+  "max_loss": <number in USD>,
+  "breakeven_points": [<price1>, <price2>],
+  "fund_required": <number in USD>,
+  "fund_flow": "<Debit|Credit>",
+  "fund_flow_amount": <net debit or credit in USD>,
+  "time_decay_impact": "<Positive|Negative|Neutral>",
+  "ideal_entry_window": "<e.g., Next 2-4 hours, During Asia session>",
+  "key_risks": ["<risk1>", "<risk2>", "<risk3>"],
+  "strategy_tips": ["<tip1>", "<tip2>", "<tip3>"],
+  "web_strategy_insights": "<Any relevant strategy insights from current market conditions and recent news>",
+  "exit_plan": {
+    "profit_target": "<e.g., Exit at 50% of max profit>",
+    "stop_loss": "<e.g., Exit if loss exceeds 2x premium paid>",
+    "time_exit": "<e.g., Close 2 days before expiration>"
+  },
+  "alternative_strategies": ["<alt1>", "<alt2>"],
+  "disclaimer": "Options trading involves substantial risk and is not suitable for every investor."
+}
