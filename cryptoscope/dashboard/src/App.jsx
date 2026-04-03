@@ -1,18 +1,30 @@
-import React, { useState, useEffect } from 'react'
-import Dashboard from './components/Dashboard'
-import StrategyBuilder from './components/options/StrategyBuilder'
-import SpotFuturesAnalyzer from './components/spotfutures/SpotFuturesAnalyzer'
-import LoginPage from './components/LoginPage'
+import React, { Suspense, lazy, useEffect, useState } from 'react'
 import { Search, Layers, Globe, LogOut } from 'lucide-react'
 import './index.css'
 
 const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/$/, '')
+const Dashboard = lazy(() => import('./components/Dashboard'))
+const StrategyBuilder = lazy(() => import('./components/options/StrategyBuilder'))
+const SpotFuturesAnalyzer = lazy(() => import('./components/spotfutures/SpotFuturesAnalyzer'))
+const LoginPage = lazy(() => import('./components/LoginPage'))
 
 function App() {
   const [activePage, setActivePage] = useState('dashboard')
   const [token, setToken]           = useState(null)
   const [username, setUsername]     = useState('')
   const [authChecked, setAuthChecked] = useState(false)
+
+  useEffect(() => {
+    const pageTitle = {
+      dashboard: 'Market Briefs',
+      'spot-futures': 'Spot & Futures',
+      options: 'Options Builder',
+    }[activePage] || 'Dashboard'
+
+    document.title = token
+      ? `CryptoScope | ${pageTitle}`
+      : 'CryptoScope | Sign In'
+  }, [activePage, token])
 
   // On mount: restore session from localStorage and verify token
   useEffect(() => {
@@ -72,7 +84,11 @@ function App() {
 
   // Not authenticated → show login
   if (!token) {
-    return <LoginPage onLogin={handleLogin} />
+    return (
+      <Suspense fallback={<AppLoader />}>
+        <LoginPage onLogin={handleLogin} />
+      </Suspense>
+    )
   }
 
   return (
@@ -119,11 +135,28 @@ function App() {
 
       {/* ── Page Content ── */}
       <div className="page-content">
-        {activePage === 'dashboard'    && <Dashboard token={token} />}
-        {activePage === 'spot-futures' && <SpotFuturesAnalyzer token={token} />}
-        {activePage === 'options'      && <StrategyBuilder token={token} />}
+        <Suspense fallback={<AppLoader />}>
+          {activePage === 'dashboard'    && <Dashboard token={token} />}
+          {activePage === 'spot-futures' && <SpotFuturesAnalyzer token={token} />}
+          {activePage === 'options'      && <StrategyBuilder token={token} />}
+        </Suspense>
       </div>
     </>
+  )
+}
+
+function AppLoader() {
+  return (
+    <div className="auth-checking">
+      <div className="auth-checking-inner">
+        <div className="logo-icon" style={{ padding: '10px', marginBottom: '1rem' }}>
+          <Search size={24} color="white" />
+        </div>
+        <div className="ai-pulse-dots">
+          <span /><span /><span />
+        </div>
+      </div>
+    </div>
   )
 }
 
