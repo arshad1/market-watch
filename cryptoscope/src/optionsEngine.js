@@ -3,6 +3,36 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
+async function fetchCryptoCompareNews(assetCode, apiKey, logPrefix) {
+  const maxAttempts = 2;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      console.log(`[${logPrefix}] CryptoCompare request attempt ${attempt}/${maxAttempts} for ${assetCode}`);
+      const res = await axios.get('https://min-api.cryptocompare.com/data/v2/news/', {
+        params: {
+          lang: 'EN',
+          categories: assetCode,
+          excludeCategories: 'Sponsored',
+        },
+        headers: {
+          authorization: `Apikey ${apiKey}`
+        },
+        timeout: 12000,
+      });
+
+      return res.data?.Data || [];
+    } catch (err) {
+      const isLastAttempt = attempt === maxAttempts;
+      console.error(`[${logPrefix}] CryptoCompare attempt ${attempt} failed: ${err.message}`);
+      if (isLastAttempt) throw err;
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+  }
+
+  return [];
+}
+
 // Predefined strategy templates
 const STRATEGIES = [
   {
@@ -166,18 +196,32 @@ function estimateHistoricalMatches(rsi, changePct, strategyBias) {
 }
 
 /**
- * Fetch recent news for context (uses SerpAPI if configured)
+ * Fetch recent news for context via CryptoCompare
  */
 async function fetchNewsContext(asset) {
-  if (!process.env.SERPAPI_KEY) return 'No external news context available.';
+  const apiKey = process.env.CRYPTOCOMPARE_API_KEY;
+  if (!apiKey || apiKey === 'your_cryptocompare_api_key_here') {
+    console.warn('[optionsEngine] CryptoCompare API key missing. Skipping news fetch.');
+    return 'No external news context available.';
+  }
+
   try {
-    const query = `${asset} options trading${new Date().toLocaleDateString()}`;
-    const res = await axios.get('https://serpapi.com/search', {
-      params: { q: query, engine: 'google_news', api_key: process.env.SERPAPI_KEY, num: 3 }
-    });
-    const results = res.data.news_results || [];
-    return results.slice(0, 3).map(r => `- ${r.title}`).join('\n') || 'No recent news found.';
-  } catch {
+    const assetCode = asset
+      .replace('/USDT', '')
+      .replace('/USD', '')
+      .replace(/[^A-Z0-9]/gi, '')
+      .toUpperCase();
+
+    console.log(`[optionsEngine] Fetching CryptoCompare news for ${asset} (category: ${assetCode})`);
+    const results = await fetchCryptoCompareNews(assetCode, apiKey, 'optionsEngine');
+    const headlines = results
+      .slice(0, 3)
+      .map(item => `- ${item.title}`);
+
+    console.log(`[optionsEngine] CryptoCompare news fetch succeeded for ${assetCode}. Headlines: ${headlines.length}`);
+    return headlines.length > 0 ? headlines.join('\n') : 'No recent news found.';
+  } catch (err) {
+    console.error('[optionsEngine] CryptoCompare news fetch failed:', err.message);
     return 'News fetch unavailable.';
   }
 }

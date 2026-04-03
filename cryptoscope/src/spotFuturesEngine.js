@@ -51,6 +51,36 @@ function formatRange(low, high) {
   return `${r2(low)} - ${r2(high)}`;
 }
 
+async function fetchCryptoCompareNews(assetCode, apiKey, logPrefix) {
+  const maxAttempts = 2;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      console.log(`[${logPrefix}] CryptoCompare request attempt ${attempt}/${maxAttempts} for ${assetCode}`);
+      const res = await axios.get('https://min-api.cryptocompare.com/data/v2/news/', {
+        params: {
+          lang: 'EN',
+          categories: assetCode,
+          excludeCategories: 'Sponsored',
+        },
+        headers: {
+          authorization: `Apikey ${apiKey}`
+        },
+        timeout: 12000
+      });
+
+      return res.data?.Data || [];
+    } catch (err) {
+      const isLastAttempt = attempt === maxAttempts;
+      console.error(`[${logPrefix}] CryptoCompare attempt ${attempt} failed: ${err.message}`);
+      if (isLastAttempt) throw err;
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+  }
+
+  return [];
+}
+
 /**
  * Compute all indicators for a given candle set
  */
@@ -243,20 +273,39 @@ function detectMarketStructure(primaryCandles, higherTimeframeCandles) {
   };
 }
 
+function normalizeAssetForNews(asset) {
+  return asset
+    .replace('/USDT', '')
+    .replace('/USD', '')
+    .replace(/[^A-Z0-9]/gi, '')
+    .toUpperCase();
+}
+
 /**
- * Fetch news context via SerpAPI
+ * Fetch news context via CryptoCompare
  */
 async function fetchNewsContext(asset) {
-  if (!process.env.SERPAPI_KEY) return 'No news context available.';
+  const apiKey = process.env.CRYPTOCOMPARE_API_KEY;
+  if (!apiKey || apiKey === 'your_cryptocompare_api_key_here') {
+    console.warn('[spotFuturesEngine] CryptoCompare API key missing. Skipping news fetch.');
+    return 'No news context available.';
+  }
+
   try {
-    const query = `${asset} crypto price today ${new Date().toLocaleDateString()}`;
-    const res = await axios.get('https://serpapi.com/search', {
-      params: { q: query, engine: 'google_news', api_key: process.env.SERPAPI_KEY, num: 5 },
-      timeout: 5000
-    });
-    const results = res.data.news_results || [];
-    return results.slice(0, 5).map(r => `- ${r.title}`).join('\n') || 'No news found.';
-  } catch {
+    const assetCode = normalizeAssetForNews(asset);
+    console.log(`[spotFuturesEngine] Fetching CryptoCompare news for ${asset} (category: ${assetCode})`);
+    const results = await fetchCryptoCompareNews(assetCode, apiKey, 'spotFuturesEngine');
+    const headlines = results
+      .filter(item => Array.isArray(item.categories?.split?.('|'))
+        ? item.categories.split('|').includes(assetCode)
+        : true)
+      .slice(0, 5)
+      .map(item => `- ${item.title}`);
+
+    console.log(`[spotFuturesEngine] CryptoCompare news fetch succeeded for ${assetCode}. Headlines: ${headlines.length}`);
+    return headlines.length > 0 ? headlines.join('\n') : 'No news found.';
+  } catch (err) {
+    console.error('[spotFuturesEngine] CryptoCompare news fetch failed:', err.message);
     return 'News fetch unavailable.';
   }
 }
