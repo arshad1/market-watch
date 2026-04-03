@@ -42,9 +42,9 @@ async function saveBrief(asset, content) {
 }
 
 async function getRecentBriefs(limit = 10) {
-  const [rows] = await pool.execute(
-    'SELECT * FROM briefs ORDER BY id DESC LIMIT ?',
-    [limit]
+  const safeLimit = Math.max(1, Math.min(100, Number.parseInt(limit, 10) || 10));
+  const [rows] = await pool.query(
+    `SELECT * FROM briefs ORDER BY id DESC LIMIT ${safeLimit}`
   );
   return rows;
 }
