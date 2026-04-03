@@ -5,8 +5,11 @@
   "main": "index.js",
   "scripts": {
     "start": "node src/scheduler.js",
+    "start:prod": "node src/scheduler.js",
     "test:run": "node src/test.js",
     "seed": "node src/data/seeder.js",
+    "build:frontend": "npm run build --prefix dashboard",
+    "build": "npm run build:frontend",
     "dev:backend": "node src/scheduler.js",
     "dev:dash": "npm run dev --prefix dashboard",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:dash\""

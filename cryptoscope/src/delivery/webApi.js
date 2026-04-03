@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const { getRecentBriefs, initDb } = require('../data/database');
 const { analyzeStrategy, STRATEGIES, buildMockOptionsChain } = require('../optionsEngine');
 const { runSpotFuturesAnalysis } = require('../spotFuturesEngine');
@@ -8,6 +9,8 @@ const { runPipeline } = require('../briefPipeline');
 const { router: authRouter, authMiddleware } = require('../auth');
 
 const app = express();
+const dashboardDistPath = path.join(__dirname, '../../dashboard/dist');
+const dashboardIndexPath = path.join(dashboardDistPath, 'index.html');
 app.use(cors());
 app.use(express.json());
 
@@ -123,10 +126,16 @@ app.use('/api', (req, res) => {
 });
 
 // ── Serve dashboard (SPA fallback) ────────────────────────────────────────────
-app.use(express.static(path.join(__dirname, '../../dashboard/dist')));
+app.use(express.static(dashboardDistPath));
 app.use((req, res, next) => {
   if (req.method === 'GET' && !req.path.startsWith('/api/')) {
-    res.sendFile(path.join(__dirname, '../../dashboard/dist/index.html'));
+    if (!fs.existsSync(dashboardIndexPath)) {
+      return res.status(503).json({
+        success: false,
+        error: 'Dashboard build not found. Run `npm run build` in the project root.'
+      });
+    }
+    res.sendFile(dashboardIndexPath);
   } else {
     next();
   }
