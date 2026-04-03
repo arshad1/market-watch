@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import BriefCard from './BriefCard';
-import { RefreshCw, Search, ShieldAlert } from 'lucide-react';
+import { RefreshCw, Search, ShieldAlert, Sparkles } from 'lucide-react';
 
 const Dashboard = ({ token }) => {
   const [briefs, setBriefs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState(null);
 
   const fetchBriefs = async () => {
@@ -25,11 +26,33 @@ const Dashboard = ({ token }) => {
     }
   };
 
+  const generateBrief = async () => {
+    setGenerating(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/briefs/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({}),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Brief generation failed');
+      await fetchBriefs();
+    } catch (err) {
+      console.error(err);
+      setError(err.message || 'Could not generate a new market brief.');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   useEffect(() => {
     fetchBriefs();
-    // Poll every 3 minutes
-    const interval = setInterval(fetchBriefs, 180000);
-    return () => clearInterval(interval);
   }, []);
 
   return (
@@ -42,32 +65,55 @@ const Dashboard = ({ token }) => {
           <div>
             <h1 className="title-gradient">CryptoScope</h1>
             <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '4px' }}>
-              Autopilot Analysis Engine
+              On-demand market brief engine
             </div>
           </div>
         </div>
-        
-        <button 
-          onClick={fetchBriefs} 
-          disabled={loading}
-          style={{ 
-            background: 'rgba(255,255,255,0.05)', 
-            border: '1px solid var(--border-card)', 
-            padding: '10px 16px', 
-            borderRadius: '12px',
-            color: 'white',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            transition: 'all 0.2s'
-          }}
-          onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-          onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
-        >
-          <RefreshCw size={16} className={loading ? 'spinning' : ''} />
-          {loading ? 'Syncing...' : 'Refresh Flow'}
-        </button>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button
+            onClick={generateBrief}
+            disabled={generating}
+            style={{
+              background: 'linear-gradient(135deg, #0f766e, #10b981)',
+              border: '1px solid rgba(16,185,129,0.3)',
+              padding: '10px 16px',
+              borderRadius: '12px',
+              color: 'white',
+              cursor: generating ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'all 0.2s',
+              opacity: generating ? 0.7 : 1
+            }}
+          >
+            <Sparkles size={16} className={generating ? 'spinning' : ''} />
+            {generating ? 'Generating...' : 'Generate Brief'}
+          </button>
+
+          <button
+            onClick={fetchBriefs}
+            disabled={loading || generating}
+            style={{
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid var(--border-card)',
+              padding: '10px 16px',
+              borderRadius: '12px',
+              color: 'white',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'all 0.2s'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+            onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+          >
+            <RefreshCw size={16} className={loading ? 'spinning' : ''} />
+            {loading ? 'Loading...' : 'Refresh Briefs'}
+          </button>
+        </div>
       </header>
       
       {error && (
@@ -81,7 +127,7 @@ const Dashboard = ({ token }) => {
         <div className="empty-state">
           <Search className="empty-state-icon" style={{ margin: '0 auto' }} />
           <h3>No Briefs Generated Yet</h3>
-          <p>The AI Engine hasn't scheduled any analysis runs or database is empty.</p>
+          <p>No auto-scheduler is running. Use Generate Brief to create one on demand.</p>
         </div>
       ) : (
         <div className="brief-grid">

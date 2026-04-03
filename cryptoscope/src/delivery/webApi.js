@@ -4,6 +4,7 @@ const path = require('path');
 const { getRecentBriefs, initDb } = require('../data/database');
 const { analyzeStrategy, STRATEGIES, buildMockOptionsChain } = require('../optionsEngine');
 const { runSpotFuturesAnalysis } = require('../spotFuturesEngine');
+const { runPipeline } = require('../briefPipeline');
 const { router: authRouter, authMiddleware } = require('../auth');
 
 const app = express();
@@ -26,6 +27,35 @@ app.get('/api/briefs', authMiddleware, async (req, res) => {
     res.json({ success: true, count: briefs.length, briefs });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+let briefGenerationInFlight = false;
+
+app.post('/api/briefs/generate', authMiddleware, async (req, res) => {
+  if (briefGenerationInFlight) {
+    return res.status(409).json({
+      success: false,
+      error: 'A market brief is already being generated.'
+    });
+  }
+
+  briefGenerationInFlight = true;
+
+  try {
+    const asset = req.body?.asset || process.env.ASSET || 'BTC/USDT';
+    const result = await runPipeline(asset);
+    const briefs = await getRecentBriefs(1);
+
+    res.json({
+      success: true,
+      message: 'Market brief generated successfully.',
+      brief: briefs[0] || { asset: result.asset, content: result.content }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  } finally {
+    briefGenerationInFlight = false;
   }
 });
 
