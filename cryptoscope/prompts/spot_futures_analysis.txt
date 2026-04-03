@@ -34,6 +34,18 @@ TECHNICAL INDICATORS:
 - ADX:           {{ADX}}
 - OBV Trend:     {{OBV_TREND}}
 
+SMC / ICT MARKET STRUCTURE:
+- Structure State: {{MARKET_STRUCTURE}}
+- Recent Swing High: ${{RECENT_SWING_HIGH}}
+- Recent Swing Low:  ${{RECENT_SWING_LOW}}
+- Dealing Range High: ${{DEALING_RANGE_HIGH}}
+- Dealing Range Low:  ${{DEALING_RANGE_LOW}}
+- Current Position In Range: {{PREMIUM_DISCOUNT}}
+- Order Block: {{ORDER_BLOCK_TYPE}} @ {{ORDER_BLOCK_RANGE}}
+- Fair Value Gap: {{FVG_TYPE}} @ {{FVG_RANGE}}
+- Liquidity Pools: {{LIQUIDITY_POOLS}}
+- Displacement: {{DISPLACEMENT}}
+
 MARKET SENTIMENT:
 - Fear & Greed Index: {{FG_VALUE}} ({{FG_LABEL}})
 - DXY (Dollar Index): {{DXY}}
@@ -88,6 +100,18 @@ STRATEGY 7: Fear & Greed Contrarian + Trend (Win Rate ~60-68%)
 - Rules: F&G < 25 (Extreme Fear) + price above EMA21 = contrarian BUY
          F&G > 75 (Extreme Greed) + price below EMA21 = contrarian SELL
          F&G 40-60 neutral = trend following mode
+
+STRATEGY 8: Smart Money Concepts (SMC) Continuation/Reversal (Win Rate ~63-71%)
+- Rules: Bullish BOS + discount dealing range + bullish order block or bullish FVG = BUY
+         Bearish BOS + premium dealing range + bearish order block or bearish FVG = SELL
+         Liquidity sweep followed by displacement strengthens the signal
+         Range-bound structure without displacement = NEUTRAL
+
+STRATEGY 9: ICT Liquidity + Imbalance Execution (Win Rate ~61-69%)
+- Rules: Sell-side liquidity sweep into discount array/FVG = BUY
+         Buy-side liquidity sweep into premium array/FVG = SELL
+         Displacement away from the swept liquidity confirms the trade
+         If price is mid-range with no clean imbalance or session expansion, stay NEUTRAL
 
 ═══════════════════════════════════════════════════════
 RESPONSE FORMAT — STRICTLY JSON ONLY. NO MARKDOWN.
@@ -153,6 +177,20 @@ RESPONSE FORMAT — STRICTLY JSON ONLY. NO MARKDOWN.
     {
       "strategy": "Fear & Greed Contrarian + Trend",
       "win_rate": "<e.g. 64%>",
+      "signal": "BUY" | "SELL" | "NEUTRAL",
+      "score": <integer 0-10>,
+      "reason": "<one line explanation>"
+    },
+    {
+      "strategy": "SMC Continuation/Reversal",
+      "win_rate": "<e.g. 67%>",
+      "signal": "BUY" | "SELL" | "NEUTRAL",
+      "score": <integer 0-10>,
+      "reason": "<one line explanation>"
+    },
+    {
+      "strategy": "ICT Liquidity + Imbalance Execution",
+      "win_rate": "<e.g. 65%>",
       "signal": "BUY" | "SELL" | "NEUTRAL",
       "score": <integer 0-10>,
       "reason": "<one line explanation>"

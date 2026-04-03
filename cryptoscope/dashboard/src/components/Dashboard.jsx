@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import BriefCard from './BriefCard';
 import { RefreshCw, Search, ShieldAlert } from 'lucide-react';
 
-const Dashboard = () => {
+const Dashboard = ({ token }) => {
   const [briefs, setBriefs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -10,7 +10,9 @@ const Dashboard = () => {
   const fetchBriefs = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/briefs?limit=12');
+      const res = await fetch('/api/briefs?limit=12', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (!res.ok) throw new Error('API request failed');
       const data = await res.json();
       setBriefs(data.briefs || []);

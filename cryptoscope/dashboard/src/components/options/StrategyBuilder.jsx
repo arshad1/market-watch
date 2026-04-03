@@ -154,7 +154,7 @@ const defaultMarketData = {
   sentiment: 'Neutral'
 };
 
-const StrategyBuilder = () => {
+const StrategyBuilder = ({ token }) => {
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [legs, setLegs] = useState([]);
   const [marketData, setMarketData] = useState(defaultMarketData);
@@ -165,7 +165,9 @@ const StrategyBuilder = () => {
 
   // Fetch latest market data from the briefs API to get real price/indicators
   useEffect(() => {
-    fetch('/api/briefs?limit=1')
+    fetch('/api/briefs?limit=1', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
       .then(r => r.json())
       .then(data => {
         if (data.briefs?.length > 0) {
@@ -209,7 +211,7 @@ const StrategyBuilder = () => {
     try {
       const res = await fetch('/api/options/analyze', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           strategyId: selectedTemplate?.id || 'custom',
           legs,

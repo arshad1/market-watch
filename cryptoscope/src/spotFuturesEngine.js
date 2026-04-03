@@ -42,6 +42,15 @@ function parseCandles(klines) {
 /** Round to 2 decimal places */
 const r2 = v => Math.round(v * 100) / 100;
 
+function formatLevel(value) {
+  return Number.isFinite(value) ? r2(value) : '—';
+}
+
+function formatRange(low, high) {
+  if (!Number.isFinite(low) || !Number.isFinite(high)) return '—';
+  return `${r2(low)} - ${r2(high)}`;
+}
+
 /**
  * Compute all indicators for a given candle set
  */
@@ -142,6 +151,98 @@ function computeAllIndicators(candles) {
   };
 }
 
+function detectMarketStructure(primaryCandles, higherTimeframeCandles) {
+  const { opens, highs, lows, closes, volumes } = primaryCandles;
+  const srcHighs = higherTimeframeCandles?.highs?.length ? higherTimeframeCandles.highs : highs;
+  const srcLows = higherTimeframeCandles?.lows?.length ? higherTimeframeCandles.lows : lows;
+  const n = closes.length;
+  const lookback = Math.min(60, n);
+  const recentHigh = Math.max(...srcHighs.slice(-lookback));
+  const recentLow = Math.min(...srcLows.slice(-lookback));
+  const range = Math.max(recentHigh - recentLow, 1e-9);
+  const lastClose = closes[n - 1];
+  const prevClose = closes[n - 2] ?? lastClose;
+  const premiumThreshold = recentLow + range * 0.5;
+  const dealingZone = lastClose >= premiumThreshold ? 'Premium' : 'Discount';
+
+  let swingHigh = null;
+  let swingLow = null;
+  for (let i = n - 3; i >= Math.max(2, n - 40); i--) {
+    if (swingHigh === null && highs[i] > highs[i - 1] && highs[i] > highs[i + 1]) {
+      swingHigh = highs[i];
+    }
+    if (swingLow === null && lows[i] < lows[i - 1] && lows[i] < lows[i + 1]) {
+      swingLow = lows[i];
+    }
+    if (swingHigh !== null && swingLow !== null) break;
+  }
+  swingHigh = swingHigh ?? recentHigh;
+  swingLow = swingLow ?? recentLow;
+
+  let structureState = 'Range';
+  if (lastClose > swingHigh && prevClose <= swingHigh) structureState = 'Bullish BOS';
+  else if (lastClose < swingLow && prevClose >= swingLow) structureState = 'Bearish BOS';
+  else if (lastClose > prevClose && lastClose > (recentLow + range * 0.6)) structureState = 'Bullish Continuation';
+  else if (lastClose < prevClose && lastClose < (recentLow + range * 0.4)) structureState = 'Bearish Continuation';
+
+  let orderBlock = null;
+  for (let i = n - 3; i >= Math.max(1, n - 25); i--) {
+    const isBearCandle = closes[i] < opens[i];
+    const isBullCandle = closes[i] > opens[i];
+    const impulseUp = closes[i + 1] > highs[i];
+    const impulseDown = closes[i + 1] < lows[i];
+    if (!orderBlock && impulseUp && isBearCandle) {
+      orderBlock = { type: 'Bullish Order Block', low: lows[i], high: highs[i] };
+      break;
+    }
+    if (!orderBlock && impulseDown && isBullCandle) {
+      orderBlock = { type: 'Bearish Order Block', low: lows[i], high: highs[i] };
+      break;
+    }
+  }
+
+  let fairValueGap = null;
+  for (let i = n - 3; i >= Math.max(2, n - 25); i--) {
+    if (lows[i] > highs[i - 2]) {
+      fairValueGap = { type: 'Bullish FVG', low: highs[i - 2], high: lows[i] };
+      break;
+    }
+    if (highs[i] < lows[i - 2]) {
+      fairValueGap = { type: 'Bearish FVG', low: highs[i], high: lows[i - 2] };
+      break;
+    }
+  }
+
+  const tolerance = lastClose * 0.0015;
+  const liquidityHighs = highs
+    .slice(-30)
+    .filter(h => Math.abs(h - recentHigh) <= tolerance);
+  const liquidityLows = lows
+    .slice(-30)
+    .filter(l => Math.abs(l - recentLow) <= tolerance);
+
+  const avgVolume = volumes.slice(-20).reduce((sum, v) => sum + v, 0) / Math.min(20, volumes.length);
+  const displacement = Math.abs(lastClose - prevClose);
+  const displacementState = displacement > ((highs[n - 1] - lows[n - 1]) * 0.8) && volumes[n - 1] > avgVolume
+    ? (lastClose > prevClose ? 'Bullish displacement' : 'Bearish displacement')
+    : 'Normal expansion';
+
+  return {
+    structureState,
+    recentHigh: formatLevel(recentHigh),
+    recentLow: formatLevel(recentLow),
+    swingHigh: formatLevel(swingHigh),
+    swingLow: formatLevel(swingLow),
+    dealingZone,
+    orderBlockType: orderBlock?.type || 'None',
+    orderBlockRange: formatRange(orderBlock?.low, orderBlock?.high),
+    fairValueGapType: fairValueGap?.type || 'None',
+    fairValueGapRange: formatRange(fairValueGap?.low, fairValueGap?.high),
+    liquidityPools: `${liquidityHighs.length >= 2 ? 'Buy-side near ' + r2(recentHigh) : 'No clustered buy-side pool'} | ${liquidityLows.length >= 2 ? 'Sell-side near ' + r2(recentLow) : 'No clustered sell-side pool'}`,
+    displacementState,
+  };
+}
+
 /**
  * Fetch news context via SerpAPI
  */
@@ -183,6 +284,8 @@ async function runSpotFuturesAnalysis(asset = 'BTC/USDT', timeframe = '15m') {
   const candleMap = { '5m': k5m, '15m': k15m, '1h': k1h, '4h': k4h };
   const primaryCandles = parseCandles(candleMap[timeframe] || k15m);
   const indicators = computeAllIndicators(primaryCandles);
+  const htfCandles = parseCandles(k1h);
+  const marketStructure = detectMarketStructure(primaryCandles, htfCandles);
 
   const price = parseFloat(ticker.lastPrice);
   const open  = parseFloat(ticker.openPrice);
@@ -233,6 +336,18 @@ async function runSpotFuturesAnalysis(asset = 'BTC/USDT', timeframe = '15m') {
     .replace('{{WILLIAMS_R}}', indicators.williamsR)
     .replace('{{ADX}}', indicators.adx)
     .replace('{{OBV_TREND}}', indicators.obvTrend)
+    .replace('{{MARKET_STRUCTURE}}', marketStructure.structureState)
+    .replace('{{RECENT_SWING_HIGH}}', marketStructure.swingHigh)
+    .replace('{{RECENT_SWING_LOW}}', marketStructure.swingLow)
+    .replace('{{DEALING_RANGE_HIGH}}', marketStructure.recentHigh)
+    .replace('{{DEALING_RANGE_LOW}}', marketStructure.recentLow)
+    .replace('{{PREMIUM_DISCOUNT}}', marketStructure.dealingZone)
+    .replace('{{ORDER_BLOCK_TYPE}}', marketStructure.orderBlockType)
+    .replace('{{ORDER_BLOCK_RANGE}}', marketStructure.orderBlockRange)
+    .replace('{{FVG_TYPE}}', marketStructure.fairValueGapType)
+    .replace('{{FVG_RANGE}}', marketStructure.fairValueGapRange)
+    .replace('{{LIQUIDITY_POOLS}}', marketStructure.liquidityPools)
+    .replace('{{DISPLACEMENT}}', marketStructure.displacementState)
     .replace('{{FG_VALUE}}', '—')
     .replace('{{FG_LABEL}}', '(not fetched)')
     .replace('{{DXY}}', '—')
@@ -262,6 +377,7 @@ async function runSpotFuturesAnalysis(asset = 'BTC/USDT', timeframe = '15m') {
     live_indicators: {
       price, open, high, low, volume: vol, changePct: chPct,
       ...indicators,
+      marketStructure,
       session,
       asset,
       timeframe,

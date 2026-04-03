@@ -21,7 +21,7 @@ const TIMEFRAMES = [
   { label: '4H Trend', value: '4h' },
 ];
 
-const SpotFuturesAnalyzer = () => {
+const SpotFuturesAnalyzer = ({ token }) => {
   const [asset, setAsset]         = useState('BTC/USDT');
   const [timeframe, setTimeframe] = useState('15m');
   const [analysis, setAnalysis]   = useState(null);
@@ -36,7 +36,7 @@ const SpotFuturesAnalyzer = () => {
     try {
       const res = await fetch('/api/spot-futures/analyze', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ asset, timeframe })
       });
       const data = await res.json();
@@ -64,7 +64,7 @@ const SpotFuturesAnalyzer = () => {
             Spot &amp; Futures Strategy Analyzer
           </h2>
           <p className="sfa-subtitle">
-            7 real-world strategies · Live Binance data · AI-powered BUY / SELL verdict
+            9 real-world strategies incl. SMC + ICT · Live Binance data · AI-powered BUY / SELL verdict
           </p>
         </div>
 

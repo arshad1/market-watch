@@ -19,8 +19,8 @@ async function runPipeline(asset) {
     // 2. AI Prompt Engine
     const briefText = await generateBrief(payload);
     
-    // 3. Save to DB
-    saveBrief(asset, briefText);
+    // 3. Save to DB (async now)
+    await saveBrief(asset, briefText);
     
     // 4. Delivery
     if (process.env.ENABLE_TELEGRAM === 'true') {
@@ -34,7 +34,7 @@ async function runPipeline(asset) {
 }
 
 if (require.main === module) {
-  // Start API Server
+  // Start API Server (also initialises DB)
   startServer();
 
   // Initialize Scheduler
