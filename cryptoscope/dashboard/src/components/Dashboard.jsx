@@ -70,23 +70,12 @@ const Dashboard = ({ token }) => {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div className="dashboard-actions">
           <button
             onClick={generateBrief}
             disabled={generating}
-            style={{
-              background: 'linear-gradient(135deg, #0f766e, #10b981)',
-              border: '1px solid rgba(16,185,129,0.3)',
-              padding: '10px 16px',
-              borderRadius: '12px',
-              color: 'white',
-              cursor: generating ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              transition: 'all 0.2s',
-              opacity: generating ? 0.7 : 1
-            }}
+            className="dashboard-action-btn dashboard-action-btn-primary"
+            style={{ opacity: generating ? 0.7 : 1 }}
           >
             <Sparkles size={16} className={generating ? 'spinning' : ''} />
             {generating ? 'Generating...' : 'Generate Brief'}
@@ -95,18 +84,7 @@ const Dashboard = ({ token }) => {
           <button
             onClick={fetchBriefs}
             disabled={loading || generating}
-            style={{
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid var(--border-card)',
-              padding: '10px 16px',
-              borderRadius: '12px',
-              color: 'white',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              transition: 'all 0.2s'
-            }}
+            className="dashboard-action-btn dashboard-action-btn-secondary"
             onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
             onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
           >

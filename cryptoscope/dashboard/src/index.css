@@ -1286,3 +1286,268 @@ h1, h2, h3, h4, h5, h6 {
   border-color: rgba(239,68,68,0.4);
   color: #fca5a5;
 }
+
+.dashboard-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dashboard-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  min-height: 44px;
+}
+
+.dashboard-action-btn:disabled {
+  cursor: not-allowed;
+}
+
+.dashboard-action-btn-primary {
+  background: linear-gradient(135deg, #0f766e, #10b981);
+  border: 1px solid rgba(16,185,129,0.3);
+}
+
+.dashboard-action-btn-secondary {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border-card);
+}
+
+@media (max-width: 900px) {
+  .global-nav {
+    padding: 12px 1rem;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .nav-logo,
+  .nav-right {
+    width: 100%;
+  }
+
+  .nav-links {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+
+  .nav-links::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-link {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .nav-right {
+    justify-content: space-between;
+  }
+
+  .dashboard-container,
+  .strategy-builder,
+  .sfa-page {
+    padding: 1rem;
+  }
+
+  .header {
+    gap: 16px;
+    margin-bottom: 2rem;
+  }
+
+  .dashboard-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .dashboard-action-btn {
+    flex: 1 1 220px;
+  }
+
+  .brief-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .card-header {
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .sfa-controls {
+    gap: 1rem;
+    padding: 1rem;
+  }
+
+  .sfa-control-group {
+    width: 100%;
+  }
+
+  .sfa-select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .sfa-tf-group {
+    overflow-x: auto;
+    width: 100%;
+    scrollbar-width: none;
+  }
+
+  .sfa-tf-group::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sfa-tf-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .sfa-run-btn {
+    margin-left: 0;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .sfa-loading-grid,
+  .signal-list,
+  .sfa-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .signal-item {
+    flex-direction: column;
+  }
+
+  .signal-right {
+    width: 100%;
+    min-width: 0;
+    border-left: none;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    flex-direction: row;
+    justify-content: space-between;
+  }
+
+  .verdict-body {
+    padding: 1rem;
+    gap: 1rem;
+  }
+
+  .verdict-summary {
+    padding: 1rem;
+  }
+
+  .trade-param-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .indicator-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sb-tabs {
+    width: 100%;
+  }
+
+  .sb-tab {
+    flex: 1 1 0;
+    justify-content: center;
+    padding: 9px 12px;
+  }
+
+  .template-banner {
+    flex-wrap: wrap;
+  }
+
+  .tmpl-change-btn {
+    margin-left: 0;
+  }
+
+  .sb-actions-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .add-leg-btn,
+  .net-credit-badge {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .payoff-stats-row {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 640px) {
+  .title-gradient,
+  .sb-title,
+  .sfa-title,
+  .verdict-label {
+    font-size: 1.5rem;
+  }
+
+  .glass-card,
+  .ai-panel,
+  .login-card {
+    padding: 1rem;
+    border-radius: 16px;
+  }
+
+  .nav-username {
+    max-width: 55vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .empty-state,
+  .sfa-empty {
+    padding: 2rem 1rem;
+  }
+
+  .trade-param-grid,
+  .indicator-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .market-inputs-row,
+  .leg-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .template-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tmpl-stats {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .tmpl-apply-btn {
+    margin-left: 0;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .login-card {
+    padding: 1.5rem 1rem;
+  }
+
+  .opinion-avatar {
+    align-items: flex-start;
+  }
+}
