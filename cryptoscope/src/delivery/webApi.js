@@ -11,8 +11,29 @@ const { router: authRouter, authMiddleware } = require('../auth');
 const app = express();
 const dashboardDistPath = path.join(__dirname, '../../dashboard/dist');
 const dashboardIndexPath = path.join(dashboardDistPath, 'index.html');
+const spotFuturesJobs = new Map();
 app.use(cors());
 app.use(express.json());
+
+function createJobId() {
+  return `sfa_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function setSpotFuturesJob(jobId, patch) {
+  const current = spotFuturesJobs.get(jobId);
+  if (!current) return;
+  spotFuturesJobs.set(jobId, { ...current, ...patch, updatedAt: new Date().toISOString() });
+}
+
+function compactSpotFuturesJobs() {
+  const now = Date.now();
+  for (const [jobId, job] of spotFuturesJobs.entries()) {
+    const ageMs = now - new Date(job.updatedAt || job.createdAt).getTime();
+    if (ageMs > 30 * 60 * 1000) {
+      spotFuturesJobs.delete(jobId);
+    }
+  }
+}
 
 // ── Auth Routes (public) ──────────────────────────────────────────────────────
 app.use('/api/auth', authRouter);
@@ -109,13 +130,93 @@ app.post('/api/options/analyze', authMiddleware, async (req, res) => {
 // ── Protected: Spot / Futures ─────────────────────────────────────────────────
 
 app.post('/api/spot-futures/analyze', authMiddleware, async (req, res) => {
+  const { asset = 'BTC/USDT', timeframe = '15m' } = req.body;
+  const jobId = createJobId();
+  compactSpotFuturesJobs();
+  spotFuturesJobs.set(jobId, {
+    id: jobId,
+    status: 'queued',
+    progress: 0,
+    stage: 'queued',
+    detail: 'Waiting to start',
+    asset,
+    timeframe,
+    analysis: null,
+    error: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  });
+
+  res.status(202).json({
+    success: true,
+    jobId,
+    status: 'queued'
+  });
+
+  (async () => {
+    try {
+      console.log(`[webApi] Spot/Futures analysis requested: ${asset} (${timeframe}) [job ${jobId}]`);
+      setSpotFuturesJob(jobId, {
+        status: 'running',
+        progress: 2,
+        stage: 'starting',
+        detail: 'Starting analysis'
+      });
+
+      const analysis = await runSpotFuturesAnalysis(asset, timeframe, ({ progress, stage, detail, timestamp }) => {
+        setSpotFuturesJob(jobId, {
+          status: 'running',
+          progress,
+          stage,
+          detail,
+          lastProgressAt: timestamp
+        });
+      });
+
+      setSpotFuturesJob(jobId, {
+        status: 'completed',
+        progress: 100,
+        stage: 'complete',
+        detail: 'Analysis complete',
+        analysis
+      });
+    } catch (err) {
+      console.error('[webApi] Spot/Futures analyze error:', err.message);
+      setSpotFuturesJob(jobId, {
+        status: 'failed',
+        stage: 'failed',
+        detail: err.message,
+        error: err.message
+      });
+    }
+  })();
+});
+
+app.get('/api/spot-futures/analyze/:jobId', authMiddleware, async (req, res) => {
   try {
-    const { asset = 'BTC/USDT', timeframe = '15m' } = req.body;
-    console.log(`[webApi] Spot/Futures analysis requested: ${asset} (${timeframe})`);
-    const analysis = await runSpotFuturesAnalysis(asset, timeframe);
-    res.json({ success: true, analysis });
+    const job = spotFuturesJobs.get(req.params.jobId);
+    if (!job) {
+      return res.status(404).json({ success: false, error: 'Analysis job not found.' });
+    }
+
+    res.json({
+      success: true,
+      job: {
+        id: job.id,
+        status: job.status,
+        progress: job.progress,
+        stage: job.stage,
+        detail: job.detail,
+        asset: job.asset,
+        timeframe: job.timeframe,
+        createdAt: job.createdAt,
+        updatedAt: job.updatedAt,
+        error: job.error,
+        analysis: job.analysis
+      }
+    });
   } catch (err) {
-    console.error('[webApi] Spot/Futures analyze error:', err.message);
+    console.error('[webApi] Spot/Futures job status error:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });

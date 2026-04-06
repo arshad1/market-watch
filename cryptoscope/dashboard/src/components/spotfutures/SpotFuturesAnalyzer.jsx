@@ -1,12 +1,13 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   TrendingUp, TrendingDown, Minus, RefreshCw, Zap,
   AlertTriangle, Target, Clock, BarChart2, Activity,
-  Shield, DollarSign, ChevronDown, Layers, Globe
+  Shield, DollarSign, ChevronDown, Layers, Globe, LoaderCircle
 } from 'lucide-react';
 import VerdictCard from './VerdictCard';
 import StrategySignals from './StrategySignals';
 import IndicatorGrid from './IndicatorGrid';
+import AgentWorkflowCard from './AgentWorkflowCard';
 
 const ASSETS = [
   'BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT',
@@ -21,6 +22,32 @@ const TIMEFRAMES = [
   { label: '4H Trend', value: '4h' },
 ];
 
+const STAGE_LABELS = {
+  queued: 'Queued',
+  starting: 'Starting',
+  initializing: 'Initializing',
+  'market-data': 'Fetching Market Data',
+  'news-context': 'Fetching News Context',
+  'screening-agent': 'Screening Setup',
+  'dynamic-context': 'Expanding Context',
+  'parallel-agents': 'Running Parallel Analysts',
+  'risk-manager': 'Risk Review',
+  consensus: 'Building Consensus',
+  complete: 'Complete',
+  failed: 'Failed'
+};
+
+const STAGE_ORDER = [
+  'market-data',
+  'news-context',
+  'screening-agent',
+  'dynamic-context',
+  'parallel-agents',
+  'risk-manager',
+  'consensus',
+  'complete'
+];
+
 const SpotFuturesAnalyzer = ({ token }) => {
   const [asset, setAsset]         = useState('BTC/USDT');
   const [timeframe, setTimeframe] = useState('15m');
@@ -28,10 +55,66 @@ const SpotFuturesAnalyzer = ({ token }) => {
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState(null);
   const [lastRun, setLastRun]     = useState(null);
+  const [job, setJob]             = useState(null);
+
+  useEffect(() => {
+    if (!loading || !job?.id) return undefined;
+
+    let cancelled = false;
+    let timeoutId = null;
+
+    const pollJob = async () => {
+      try {
+        const res = await fetch(`/api/spot-futures/analyze/${job.id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Unable to fetch analysis progress');
+        if (cancelled) return;
+
+        const nextJob = data.job;
+        setJob(nextJob);
+
+        if (nextJob.status === 'completed') {
+          setAnalysis(nextJob.analysis);
+          setLastRun(new Date());
+          setLoading(false);
+          return;
+        }
+
+        if (nextJob.status === 'failed') {
+          setError(nextJob.error || nextJob.detail || 'Analysis failed');
+          setLoading(false);
+          return;
+        }
+
+        timeoutId = window.setTimeout(pollJob, 900);
+      } catch (err) {
+        if (cancelled) return;
+        setError(err.message);
+        setLoading(false);
+      }
+    };
+
+    pollJob();
+
+    return () => {
+      cancelled = true;
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+  }, [loading, job?.id, token]);
 
   const runAnalysis = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setAnalysis(null);
+    setJob({
+      id: null,
+      status: 'submitting',
+      progress: 0,
+      stage: 'queued',
+      detail: 'Submitting analysis request'
+    });
 
     try {
       const res = await fetch('/api/spot-futures/analyze', {
@@ -41,18 +124,21 @@ const SpotFuturesAnalyzer = ({ token }) => {
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Analysis failed');
-      setAnalysis(data.analysis);
-      setLastRun(new Date());
+      setJob({
+        id: data.jobId,
+        status: data.status || 'queued',
+        progress: 0,
+        stage: 'queued',
+        detail: 'Queued for execution'
+      });
     } catch (err) {
       setError(err.message);
-    } finally {
       setLoading(false);
     }
-  }, [asset, timeframe]);
+  }, [asset, timeframe, token]);
 
-  const verdictColor = {
-    BUY:  '#10b981', SELL: '#ef4444', HOLD: '#f59e0b'
-  }[analysis?.final_verdict] || '#94a3b8';
+  const currentStageIndex = STAGE_ORDER.indexOf(job?.stage);
+  const visibleStages = STAGE_ORDER.filter((stage, index) => stage !== 'dynamic-context' || currentStageIndex >= index || job?.stage === 'dynamic-context');
 
   return (
     <div className="sfa-page">
@@ -136,15 +222,48 @@ const SpotFuturesAnalyzer = ({ token }) => {
 
       {/* ── Loading skeleton ── */}
       {loading && (
-        <div className="sfa-loading-grid">
-          {[1,2,3,4].map(i => (
-            <div key={i} className="sfa-skeleton glass-card">
-              <div className="skeleton-line tall" />
-              <div className="skeleton-line" />
-              <div className="skeleton-line short" />
+        <>
+          <div className="glass-card sfa-progress-card">
+            <div className="sfa-progress-head">
+              <div>
+                <div className="sfa-progress-label">Agentic Workflow Progress</div>
+                <div className="sfa-progress-stage">{STAGE_LABELS[job?.stage] || 'Queued'}</div>
+              </div>
+              <div className="sfa-progress-value">{job?.progress || 0}%</div>
             </div>
-          ))}
-        </div>
+            <div className="sfa-progress-bar">
+              <div className="sfa-progress-fill" style={{ width: `${job?.progress || 0}%` }} />
+            </div>
+            <div className="sfa-progress-detail">
+              <LoaderCircle size={14} className="spinning" />
+              {job?.detail || 'Preparing analysis'}
+            </div>
+            <div className="sfa-progress-steps">
+              {visibleStages.map((stage, index) => {
+                const stepIndex = STAGE_ORDER.indexOf(stage);
+                const isDone = currentStageIndex > stepIndex || job?.status === 'completed';
+                const isActive = job?.stage === stage;
+
+                return (
+                  <div key={stage} className={`sfa-progress-step ${isDone ? 'done' : ''} ${isActive ? 'active' : ''}`}>
+                    <span className="sfa-progress-dot" />
+                    <span>{STAGE_LABELS[stage]}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="sfa-loading-grid">
+            {[1,2,3,4].map(i => (
+              <div key={i} className="sfa-skeleton glass-card">
+                <div className="skeleton-line tall" />
+                <div className="skeleton-line" />
+                <div className="skeleton-line short" />
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {/* ── Results ── */}
@@ -155,6 +274,8 @@ const SpotFuturesAnalyzer = ({ token }) => {
 
           {/* Strategy signals scoreboard */}
           <StrategySignals signals={analysis.strategy_signals} />
+
+          <AgentWorkflowCard workflow={analysis.agentic_workflow} />
 
           {/* Live indicators grid */}
           {analysis.live_indicators && (

@@ -885,6 +885,62 @@ h1, h2, h3, h4, h5, h6 {
   padding: 5rem; text-align: center;
 }
 
+.sfa-progress-card {
+  margin-bottom: 1rem;
+  padding: 1.25rem 1.5rem;
+}
+.sfa-progress-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  margin-bottom: 12px;
+}
+.sfa-progress-label {
+  color: #64748b; font-size: 0.72rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;
+}
+.sfa-progress-stage {
+  color: #fff; font-size: 1.1rem; font-weight: 700; font-family: 'Outfit', sans-serif;
+}
+.sfa-progress-value {
+  color: #60a5fa; font-size: 1.6rem; font-weight: 800; font-family: 'Outfit', sans-serif;
+}
+.sfa-progress-bar {
+  height: 10px; border-radius: 999px; overflow: hidden;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.06);
+}
+.sfa-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #10b981);
+  border-radius: 999px;
+  transition: width 0.35s ease;
+  box-shadow: 0 0 20px rgba(59,130,246,0.35);
+}
+.sfa-progress-detail {
+  display: flex; align-items: center; gap: 8px;
+  color: #cbd5e1; font-size: 0.86rem; margin-top: 12px;
+}
+.sfa-progress-steps {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px;
+  margin-top: 14px;
+}
+.sfa-progress-step {
+  display: flex; align-items: center; gap: 8px;
+  color: #64748b; font-size: 0.78rem;
+  padding: 8px 10px; border-radius: 10px;
+  background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04);
+}
+.sfa-progress-step.active {
+  color: #e2e8f0; border-color: rgba(59,130,246,0.2);
+  background: rgba(59,130,246,0.08);
+}
+.sfa-progress-step.done {
+  color: #bbf7d0; border-color: rgba(16,185,129,0.18);
+  background: rgba(16,185,129,0.08);
+}
+.sfa-progress-dot {
+  width: 8px; height: 8px; border-radius: 999px;
+  background: currentColor; flex: 0 0 auto;
+}
+
 /* Skeletons */
 .sfa-loading-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .sfa-skeleton { height: 180px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
@@ -1002,6 +1058,63 @@ h1, h2, h3, h4, h5, h6 {
 }
 .signal-score { display: flex; align-items: center; font-weight: 700; font-size: 1rem; margin-bottom: 4px; }
 .signal-score-val { font-size: 0.7rem; color: #475569; font-weight: 600; }
+
+/* ═══════════════════════════════════════════════════════════
+   AGENTIC WORKFLOW
+═══════════════════════════════════════════════════════════ */
+.sfa-agentic-card { padding: 1.5rem; }
+.agentic-topline {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 14px; flex-wrap: wrap;
+}
+.agentic-flag {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-radius: 999px;
+  background: rgba(148,163,184,0.08); color: #cbd5e1;
+  border: 1px solid rgba(148,163,184,0.15); font-size: 0.78rem; font-weight: 600;
+}
+.agentic-flag.hot {
+  background: rgba(245,158,11,0.12); color: #fcd34d;
+  border-color: rgba(245,158,11,0.2);
+}
+.agentic-meta { color: #64748b; font-size: 0.78rem; }
+.agentic-shocks { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.shock-pill {
+  padding: 4px 10px; border-radius: 999px;
+  font-size: 0.72rem; font-weight: 700;
+  color: #64748b; background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.shock-pill.active {
+  color: #fbbf24; background: rgba(245,158,11,0.12);
+  border-color: rgba(245,158,11,0.2);
+}
+.agentic-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px;
+}
+.agentic-step {
+  background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 14px; padding: 14px;
+}
+.agentic-step-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px;
+}
+.agentic-step-title {
+  display: inline-flex; align-items: center; gap: 8px;
+  color: #fff; font-size: 0.86rem; font-weight: 700;
+}
+.agentic-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 3px 8px; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.08); font-size: 0.68rem; font-weight: 700;
+}
+.agentic-step-meta {
+  color: #64748b; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+.agentic-step-body {
+  margin: 0; color: #cbd5e1; font-size: 0.82rem; line-height: 1.55;
+}
 
 /* ═══════════════════════════════════════════════════════════
    LIVE INDICATORS GRID
