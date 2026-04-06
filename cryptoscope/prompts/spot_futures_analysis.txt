@@ -46,6 +46,11 @@ SMC / ICT MARKET STRUCTURE:
 - Liquidity Pools: {{LIQUIDITY_POOLS}}
 - Displacement: {{DISPLACEMENT}}
 
+ORDER FLOW & LIQUIDITY:
+- Order Book Imbalance (Bids - Asks / Total): {{IMBALANCE}}
+- Cumulative Vol Delta (CVD): {{CVD}} (Net Market Buys vs Sells)
+- Recent Liquidations: Longs ${{LIQ_LONG}} | Shorts ${{LIQ_SHORT}}
+
 MARKET SENTIMENT:
 - Fear & Greed Index: {{FG_VALUE}} ({{FG_LABEL}})
 - DXY (Dollar Index): {{DXY}}
@@ -125,6 +130,7 @@ RESPONSE FORMAT — STRICTLY JSON ONLY. NO MARKDOWN.
   "trade_type": "Spot" | "Futures Long" | "Futures Short" | "Hold Cash",
   "entry_zone": { "low": <number>, "high": <number> },
   "stop_loss": <number>,
+  "trailing_stop_activation": <number: calculate price to activate ATR-based trailing stop>,
   "take_profit_1": <number>,
   "take_profit_2": <number>,
   "take_profit_3": <number>,

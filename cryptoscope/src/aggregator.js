@@ -38,7 +38,11 @@ async function aggregateData(asset = 'BTCUSDT') {
       fgValue: sentiment.fearAndGreedValue,
       fgLabel: sentiment.fearAndGreedLabel,
       newsHeadlines: sentiment.newsHeadlines,
-      dxy: macro.dxy
+      dxy: macro.dxy,
+      cvd: priceData.orderFlow.cvd,
+      imbalance: priceData.orderFlow.imbalance,
+      liquidationsLong: priceData.orderFlow.liquidations.longs,
+      liquidationsShort: priceData.orderFlow.liquidations.shorts
     };
 
     return payload;

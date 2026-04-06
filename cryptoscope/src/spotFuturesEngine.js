@@ -11,13 +11,51 @@ const BASE = 'https://api.binance.com/api/v3';
  */
 async function fetchMultiTimeframeData(symbol = 'BTCUSDT') {
   const cleanSymbol = symbol.replace(/[^A-Z0-9]/g, '').toUpperCase();
-  const [ticker, k5m, k15m, k1h, k4h] = await Promise.all([
+
+  console.log(`[spotFuturesEngine] Fetching data for ${cleanSymbol}...`);
+  const [ticker, k5m, k15m, k1h, k4h, depthRes, aggTradesRes] = await Promise.all([
     axios.get(`${BASE}/ticker/24hr?symbol=${cleanSymbol}`),
     axios.get(`${BASE}/klines?symbol=${cleanSymbol}&interval=5m&limit=200`),
     axios.get(`${BASE}/klines?symbol=${cleanSymbol}&interval=15m&limit=200`),
     axios.get(`${BASE}/klines?symbol=${cleanSymbol}&interval=1h&limit=200`),
     axios.get(`${BASE}/klines?symbol=${cleanSymbol}&interval=4h&limit=100`),
+    axios.get(`https://fapi.binance.com/fapi/v1/depth?symbol=${cleanSymbol}&limit=100`).catch(() => ({ data: { bids: [], asks: [] } })),
+    axios.get(`https://fapi.binance.com/fapi/v1/aggTrades?symbol=${cleanSymbol}&limit=1000`).catch(() => ({ data: [] }))
   ]);
+
+  // allForceOrders is deprecated and removed by Binance
+  const forceRes = { data: [] };
+
+  // Order Flow: Imbalance
+  const depth = depthRes.data;
+  let totalBids = 0, totalAsks = 0;
+  if (depth.bids && depth.asks) {
+    depth.bids.forEach(b => totalBids += parseFloat(b[1]));
+    depth.asks.forEach(a => totalAsks += parseFloat(a[1]));
+  }
+  const imbalance = (totalBids + totalAsks) > 0 ? ((totalBids - totalAsks) / (totalBids + totalAsks)).toFixed(2) : '0.00';
+
+  // Order Flow: CVD
+  const trades = aggTradesRes.data;
+  let cvd = 0;
+  if (Array.isArray(trades)) {
+    trades.forEach(t => {
+      const qty = parseFloat(t.q);
+      if (t.m) cvd -= qty;
+      else cvd += qty;
+    });
+  }
+
+  // Order Flow: Liquidations
+  const forceOrders = forceRes.data;
+  let longsLiquidated = 0, shortsLiquidated = 0;
+  if (Array.isArray(forceOrders)) {
+    forceOrders.forEach(o => {
+      const valUSD = parseFloat(o.q) * parseFloat(o.p);
+      if (o.S === 'SELL') longsLiquidated += valUSD;
+      else shortsLiquidated += valUSD;
+    });
+  }
 
   return {
     ticker: ticker.data,
@@ -25,16 +63,21 @@ async function fetchMultiTimeframeData(symbol = 'BTCUSDT') {
     k15m: k15m.data,
     k1h: k1h.data,
     k4h: k4h.data,
+    orderFlow: {
+      imbalance,
+      cvd,
+      liquidations: { longs: longsLiquidated, shorts: shortsLiquidated }
+    }
   };
 }
 
 /** Parse candles into float arrays */
 function parseCandles(klines) {
   return {
-    opens:   klines.map(c => parseFloat(c[1])),
-    highs:   klines.map(c => parseFloat(c[2])),
-    lows:    klines.map(c => parseFloat(c[3])),
-    closes:  klines.map(c => parseFloat(c[4])),
+    opens: klines.map(c => parseFloat(c[1])),
+    highs: klines.map(c => parseFloat(c[2])),
+    lows: klines.map(c => parseFloat(c[3])),
+    closes: klines.map(c => parseFloat(c[4])),
     volumes: klines.map(c => parseFloat(c[5])),
   };
 }
@@ -89,9 +132,9 @@ function computeAllIndicators(candles) {
   const n = closes.length;
 
   // EMAs
-  const ema9   = EMA.calculate({ values: closes, period: 9 });
-  const ema21  = EMA.calculate({ values: closes, period: 21 });
-  const ema50  = EMA.calculate({ values: closes, period: 50 });
+  const ema9 = EMA.calculate({ values: closes, period: 9 });
+  const ema21 = EMA.calculate({ values: closes, period: 21 });
+  const ema50 = EMA.calculate({ values: closes, period: 50 });
   const ema200 = EMA.calculate({ values: closes, period: 200 });
 
   // RSI
@@ -155,27 +198,27 @@ function computeAllIndicators(candles) {
 
   return {
     price,
-    ema9:    r2(ema9[ema9.length - 1] || price),
-    ema21:   r2(ema21[ema21.length - 1] || price),
-    ema50:   r2(ema50[ema50.length - 1] || price),
-    ema200:  r2(ema200[ema200.length - 1] || price),
-    rsi:     r2(rsiArr[rsiArr.length - 1] || 50),
-    macd:    r2(lastMacd.MACD || 0),
+    ema9: r2(ema9[ema9.length - 1] || price),
+    ema21: r2(ema21[ema21.length - 1] || price),
+    ema50: r2(ema50[ema50.length - 1] || price),
+    ema200: r2(ema200[ema200.length - 1] || price),
+    rsi: r2(rsiArr[rsiArr.length - 1] || 50),
+    macd: r2(lastMacd.MACD || 0),
     macdSignal: r2(lastMacd.signal || 0),
-    macdHist:   r2(lastMacd.histogram || 0),
+    macdHist: r2(lastMacd.histogram || 0),
     macdPrevHist: r2(prevMacd.histogram || 0),
-    bbUpper:  r2(lastBB.upper),
-    bbMid:    r2(lastBB.middle),
-    bbLower:  r2(lastBB.lower),
-    atr:      r2(atrVal),
-    adx:      r2(lastADX.adx),
-    pdi:      r2(lastADX.pdi),
-    mdi:      r2(lastADX.mdi),
-    stochK:   r2(lastStoch.k),
-    stochD:   r2(lastStoch.d),
-    williamsR:r2(wrArr[wrArr.length - 1] || -50),
+    bbUpper: r2(lastBB.upper),
+    bbMid: r2(lastBB.middle),
+    bbLower: r2(lastBB.lower),
+    atr: r2(atrVal),
+    adx: r2(lastADX.adx),
+    pdi: r2(lastADX.pdi),
+    mdi: r2(lastADX.mdi),
+    stochK: r2(lastStoch.k),
+    stochD: r2(lastStoch.d),
+    williamsR: r2(wrArr[wrArr.length - 1] || -50),
     obvTrend,
-    vwap:     r2(vwap),
+    vwap: r2(vwap),
     supertrend: r2(basicLower),
     supertrendDir,
   };
@@ -327,7 +370,7 @@ async function runSpotFuturesAnalysis(asset = 'BTC/USDT', timeframe = '15m') {
   console.log(`[spotFuturesEngine] Fetching data for ${symbol}...`);
 
   // Fetch real market data from Binance
-  const { ticker, k5m, k15m, k1h, k4h } = await fetchMultiTimeframeData(symbol);
+  const { ticker, k5m, k15m, k1h, k4h, orderFlow } = await fetchMultiTimeframeData(symbol);
 
   // Use 15m as primary timeframe for analysis
   const candleMap = { '5m': k5m, '15m': k15m, '1h': k1h, '4h': k4h };
@@ -337,17 +380,17 @@ async function runSpotFuturesAnalysis(asset = 'BTC/USDT', timeframe = '15m') {
   const marketStructure = detectMarketStructure(primaryCandles, htfCandles);
 
   const price = parseFloat(ticker.lastPrice);
-  const open  = parseFloat(ticker.openPrice);
-  const high  = parseFloat(ticker.highPrice);
-  const low   = parseFloat(ticker.lowPrice);
-  const vol   = parseFloat(ticker.volume);
+  const open = parseFloat(ticker.openPrice);
+  const high = parseFloat(ticker.highPrice);
+  const low = parseFloat(ticker.lowPrice);
+  const vol = parseFloat(ticker.volume);
   const chPct = parseFloat(ticker.priceChangePercent);
 
   // Get session
   const h = new Date().getUTCHours();
   const session = h >= 13 && h < 21 ? 'NY / US Session'
-                : h >= 8  && h < 16 ? 'London / EU Session'
-                : 'Asia Session';
+    : h >= 8 && h < 16 ? 'London / EU Session'
+      : 'Asia Session';
 
   const newsContext = await fetchNewsContext(asset);
 
@@ -369,7 +412,7 @@ async function runSpotFuturesAnalysis(asset = 'BTC/USDT', timeframe = '15m') {
     .replace('{{MACD_VAL}}', indicators.macd)
     .replace('{{MACD_SIGNAL}}', indicators.macdSignal)
     .replace('{{MACD_HIST}}', indicators.macdHist)
-    .replace('{{EMA9}}',  indicators.ema9)
+    .replace('{{EMA9}}', indicators.ema9)
     .replace('{{EMA21}}', indicators.ema21)
     .replace('{{EMA50}}', indicators.ema50)
     .replace('{{EMA200}}', indicators.ema200)
@@ -397,6 +440,10 @@ async function runSpotFuturesAnalysis(asset = 'BTC/USDT', timeframe = '15m') {
     .replace('{{FVG_RANGE}}', marketStructure.fairValueGapRange)
     .replace('{{LIQUIDITY_POOLS}}', marketStructure.liquidityPools)
     .replace('{{DISPLACEMENT}}', marketStructure.displacementState)
+    .replace('{{IMBALANCE}}', orderFlow.imbalance)
+    .replace('{{CVD}}', orderFlow.cvd.toFixed(2))
+    .replace('{{LIQ_LONG}}', orderFlow.liquidations.longs.toFixed(2))
+    .replace('{{LIQ_SHORT}}', orderFlow.liquidations.shorts.toFixed(2))
     .replace('{{FG_VALUE}}', '—')
     .replace('{{FG_LABEL}}', '(not fetched)')
     .replace('{{DXY}}', '—')
@@ -404,6 +451,9 @@ async function runSpotFuturesAnalysis(asset = 'BTC/USDT', timeframe = '15m') {
 
   const useModel = process.env.AI_MODEL || 'deepseek-chat';
   console.log(`[spotFuturesEngine] Calling ${useModel} for analysis...`);
+  console.log("-----------------------------------------------\n")
+  console.log(prompt);
+  console.log("-----------------------------------------------")
 
   const response = await client.chat.completions.create({
     model: useModel,
