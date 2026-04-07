@@ -1,4 +1,6 @@
-const OpenAI = require('openai');
+const { ChatOpenAI } = require('@langchain/openai');
+const { PromptTemplate } = require('@langchain/core/prompts');
+const { StringOutputParser, JsonOutputParser } = require('@langchain/core/output_parsers');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
@@ -361,10 +363,17 @@ async function runSpotFuturesAnalysis(asset = 'BTC/USDT', timeframe = '15m') {
     throw new Error('DeepSeek API Key not configured.');
   }
 
-  const client = new OpenAI({
-    baseURL: 'https://api.deepseek.com',
-    apiKey: process.env.DEEPSEEK_API_KEY
+  const model = new ChatOpenAI({
+    modelName: process.env.AI_MODEL || 'deepseek-chat',
+    temperature: 0.15,
+    maxRetries: 2,
+    configuration: {
+      baseURL: 'https://api.deepseek.com',
+      apiKey: process.env.DEEPSEEK_API_KEY
+    }
   });
+
+  const stringParser = new StringOutputParser();
 
   const symbol = asset.replace(/[^A-Z0-9]/gi, '').toUpperCase();
   console.log(`[spotFuturesEngine] Fetching data for ${symbol}...`);
@@ -394,95 +403,103 @@ async function runSpotFuturesAnalysis(asset = 'BTC/USDT', timeframe = '15m') {
 
   const newsContext = await fetchNewsContext(asset);
 
-  // Build prompt
-  const templatePath = path.join(__dirname, '..', 'prompts', 'spot_futures_analysis.txt');
-  let prompt = fs.readFileSync(templatePath, 'utf8');
-
-  prompt = prompt
-    .replace(/{{ASSET}}/g, asset)
-    .replace('{{PRICE}}', price)
-    .replace('{{OPEN}}', open)
-    .replace('{{HIGH}}', high)
-    .replace('{{LOW}}', low)
-    .replace('{{VOLUME}}', vol.toLocaleString())
-    .replace('{{CHANGE_PCT}}', chPct.toFixed(2))
-    .replace('{{TIMESTAMP}}', new Date().toISOString())
-    .replace('{{SESSION}}', session)
-    .replace('{{RSI}}', indicators.rsi)
-    .replace('{{MACD_VAL}}', indicators.macd)
-    .replace('{{MACD_SIGNAL}}', indicators.macdSignal)
-    .replace('{{MACD_HIST}}', indicators.macdHist)
-    .replace('{{EMA9}}', indicators.ema9)
-    .replace('{{EMA21}}', indicators.ema21)
-    .replace('{{EMA50}}', indicators.ema50)
-    .replace('{{EMA200}}', indicators.ema200)
-    .replace('{{SUPERTREND}}', indicators.supertrend)
-    .replace('{{SUPERTREND_DIR}}', indicators.supertrendDir)
-    .replace('{{ATR}}', indicators.atr)
-    .replace('{{VWAP}}', indicators.vwap)
-    .replace('{{BB_UPPER}}', indicators.bbUpper)
-    .replace('{{BB_MID}}', indicators.bbMid)
-    .replace('{{BB_LOWER}}', indicators.bbLower)
-    .replace('{{STOCH_K}}', indicators.stochK)
-    .replace('{{STOCH_D}}', indicators.stochD)
-    .replace('{{WILLIAMS_R}}', indicators.williamsR)
-    .replace('{{ADX}}', indicators.adx)
-    .replace('{{OBV_TREND}}', indicators.obvTrend)
-    .replace('{{MARKET_STRUCTURE}}', marketStructure.structureState)
-    .replace('{{RECENT_SWING_HIGH}}', marketStructure.swingHigh)
-    .replace('{{RECENT_SWING_LOW}}', marketStructure.swingLow)
-    .replace('{{DEALING_RANGE_HIGH}}', marketStructure.recentHigh)
-    .replace('{{DEALING_RANGE_LOW}}', marketStructure.recentLow)
-    .replace('{{PREMIUM_DISCOUNT}}', marketStructure.dealingZone)
-    .replace('{{ORDER_BLOCK_TYPE}}', marketStructure.orderBlockType)
-    .replace('{{ORDER_BLOCK_RANGE}}', marketStructure.orderBlockRange)
-    .replace('{{FVG_TYPE}}', marketStructure.fairValueGapType)
-    .replace('{{FVG_RANGE}}', marketStructure.fairValueGapRange)
-    .replace('{{LIQUIDITY_POOLS}}', marketStructure.liquidityPools)
-    .replace('{{DISPLACEMENT}}', marketStructure.displacementState)
-    .replace('{{IMBALANCE}}', orderFlow.imbalance)
-    .replace('{{CVD}}', orderFlow.cvd.toFixed(2))
-    .replace('{{LIQ_LONG}}', orderFlow.liquidations.longs.toFixed(2))
-    .replace('{{LIQ_SHORT}}', orderFlow.liquidations.shorts.toFixed(2))
-    .replace('{{FG_VALUE}}', '—')
-    .replace('{{FG_LABEL}}', '(not fetched)')
-    .replace('{{DXY}}', '—')
-    .replace('{{NEWS_HEADLINES}}', newsContext);
-
-  const useModel = process.env.AI_MODEL || 'deepseek-chat';
-  console.log(`[spotFuturesEngine] Calling ${useModel} for analysis...`);
-  console.log("-----------------------------------------------\n")
-  console.log(prompt);
-  console.log("-----------------------------------------------")
-
-  const response = await client.chat.completions.create({
-    model: useModel,
-    max_tokens: 2000,
-    temperature: 0.15,
-    messages: [{ role: 'user', content: prompt }]
-  });
-
-  const raw = response.choices[0].message.content;
-
-  // Extract JSON
-  const jsonMatch = raw.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('AI did not return valid JSON');
-
-  const analysis = JSON.parse(jsonMatch[0]);
-
-  // Enrich with raw indicator data for charting
-  return {
-    ...analysis,
-    live_indicators: {
-      price, open, high, low, volume: vol, changePct: chPct,
-      ...indicators,
-      marketStructure,
-      session,
-      asset,
-      timeframe,
-      timestamp: new Date().toISOString()
-    }
+  const dataMap = {
+    ASSET: asset,
+    PRICE: price,
+    OPEN: open,
+    HIGH: high,
+    LOW: low,
+    VOLUME: vol.toLocaleString(),
+    CHANGE_PCT: chPct.toFixed(2),
+    TIMESTAMP: new Date().toISOString(),
+    SESSION: session,
+    RSI: indicators.rsi,
+    MACD_VAL: indicators.macd,
+    MACD_SIGNAL: indicators.macdSignal,
+    MACD_HIST: indicators.macdHist,
+    EMA9: indicators.ema9,
+    EMA21: indicators.ema21,
+    EMA50: indicators.ema50,
+    EMA200: indicators.ema200,
+    SUPERTREND: indicators.supertrend,
+    SUPERTREND_DIR: indicators.supertrendDir,
+    ATR: indicators.atr,
+    VWAP: indicators.vwap,
+    BB_UPPER: indicators.bbUpper,
+    BB_MID: indicators.bbMid,
+    BB_LOWER: indicators.bbLower,
+    STOCH_K: indicators.stochK,
+    STOCH_D: indicators.stochD,
+    WILLIAMS_R: indicators.williamsR,
+    ADX: indicators.adx,
+    OBV_TREND: indicators.obvTrend,
+    MARKET_STRUCTURE: marketStructure.structureState,
+    RECENT_SWING_HIGH: marketStructure.swingHigh,
+    RECENT_SWING_LOW: marketStructure.swingLow,
+    DEALING_RANGE_HIGH: marketStructure.recentHigh,
+    DEALING_RANGE_LOW: marketStructure.recentLow,
+    PREMIUM_DISCOUNT: marketStructure.dealingZone,
+    ORDER_BLOCK_TYPE: marketStructure.orderBlockType,
+    ORDER_BLOCK_RANGE: marketStructure.orderBlockRange,
+    FVG_TYPE: marketStructure.fairValueGapType,
+    FVG_RANGE: marketStructure.fairValueGapRange,
+    LIQUIDITY_POOLS: marketStructure.liquidityPools,
+    DISPLACEMENT: marketStructure.displacementState,
+    IMBALANCE: orderFlow.imbalance,
+    CVD: orderFlow.cvd.toFixed(2),
+    LIQ_LONG: orderFlow.liquidations.longs.toFixed(2),
+    LIQ_SHORT: orderFlow.liquidations.shorts.toFixed(2),
+    FG_VALUE: '—',
+    FG_LABEL: '(not fetched)',
+    DXY: '—',
+    NEWS_HEADLINES: newsContext
   };
+
+  try {
+    // 1. Quant Agent
+    console.log(`[spotFuturesEngine] Running Quant Agent...`);
+    const quantTemplateStr = fs.readFileSync(path.join(__dirname, '..', 'prompts', 'agent_spot_quant.txt'), 'utf8');
+    const quantPrompt = PromptTemplate.fromTemplate(quantTemplateStr);
+    const quantChain = quantPrompt.pipe(model).pipe(stringParser);
+    const quantAnalysis = await quantChain.invoke(dataMap);
+
+    // 2. Risk Agent
+    console.log(`[spotFuturesEngine] Running Risk Agent...`);
+    const riskTemplateStr = fs.readFileSync(path.join(__dirname, '..', 'prompts', 'agent_spot_risk.txt'), 'utf8');
+    const riskPrompt = PromptTemplate.fromTemplate(riskTemplateStr);
+    const riskChain = riskPrompt.pipe(model).pipe(stringParser);
+    const riskAnalysis = await riskChain.invoke({ ...dataMap, QUANT_ANALYSIS: quantAnalysis });
+
+    // 3. Formatter Agent (JSON)
+    console.log(`[spotFuturesEngine] Running Formatter Agent...`);
+    const formatterTemplateStr = fs.readFileSync(path.join(__dirname, '..', 'prompts', 'agent_spot_formatter.txt'), 'utf8');
+    const formatterPrompt = PromptTemplate.fromTemplate(formatterTemplateStr);
+    const formatterChain = formatterPrompt.pipe(model).pipe(stringParser); // Keep as string parser to clean JSON
+    
+    let rawJson = await formatterChain.invoke({ ...dataMap, QUANT_ANALYSIS: quantAnalysis, RISK_ANALYSIS: riskAnalysis });
+    
+    // Clean JSON if the model outputs markdown blocks
+    rawJson = rawJson.replace(/```json/g, '').replace(/```/g, '').trim();
+    const analysis = JSON.parse(rawJson);
+
+    // Enrich with raw indicator data for charting
+    return {
+      ...analysis,
+      live_indicators: {
+        price, open, high, low, volume: vol, changePct: chPct,
+        ...indicators,
+        marketStructure,
+        session,
+        asset,
+        timeframe,
+        timestamp: new Date().toISOString()
+      }
+    };
+
+  } catch (error) {
+    console.error('[spotFuturesEngine] Multi-Agent Engine Error:', error);
+    throw error;
+  }
 }
 
 module.exports = { runSpotFuturesAnalysis };
