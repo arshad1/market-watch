@@ -1,8 +1,8 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   TrendingUp, TrendingDown, Minus, RefreshCw, Zap,
   AlertTriangle, Target, Clock, BarChart2, Activity,
-  Shield, DollarSign, ChevronDown, Layers, Globe
+  Shield, DollarSign, ChevronDown, Layers, Globe, XCircle
 } from 'lucide-react';
 import VerdictCard from './VerdictCard';
 import StrategySignals from './StrategySignals';
@@ -24,12 +24,22 @@ const TIMEFRAMES = [
 const SpotFuturesAnalyzer = ({ token }) => {
   const [asset, setAsset]         = useState('BTC/USDT');
   const [timeframe, setTimeframe] = useState('15m');
-  const [analysis, setAnalysis]   = useState(null);
+  const [analysisCache, setAnalysisCache] = useState({});
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState(null);
-  const [lastRun, setLastRun]     = useState(null);
+
+  const cacheKey = `${asset}-${timeframe}`;
+  const analysis = analysisCache[cacheKey]?.data || null;
+  const lastRun = analysisCache[cacheKey]?.lastRun || null;
+
+  const abortControllerRef = useRef(null);
 
   const runAnalysis = useCallback(async () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+
     setLoading(true);
     setError(null);
 
@@ -37,18 +47,25 @@ const SpotFuturesAnalyzer = ({ token }) => {
       const res = await fetch('/api/spot-futures/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ asset, timeframe })
+        body: JSON.stringify({ asset, timeframe }),
+        signal: abortControllerRef.current.signal
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Analysis failed');
-      setAnalysis(data.analysis);
-      setLastRun(new Date());
+      setAnalysisCache(prev => ({
+        ...prev,
+        [`${asset}-${timeframe}`]: { data: data.analysis, lastRun: new Date() }
+      }));
     } catch (err) {
-      setError(err.message);
+      if (err.name === 'AbortError') {
+        console.log('Analysis request cancelled by user.');
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
-  }, [asset, timeframe]);
+  }, [asset, timeframe, token]);
 
   const verdictColor = {
     BUY:  '#10b981', SELL: '#ef4444', HOLD: '#f59e0b'
@@ -85,7 +102,7 @@ const SpotFuturesAnalyzer = ({ token }) => {
             <select
               className="sfa-select"
               value={asset}
-              onChange={e => { setAsset(e.target.value); setAnalysis(null); }}
+              onChange={e => { setAsset(e.target.value); }}
               id="sfa-asset-select"
             >
               {ASSETS.map(a => <option key={a} value={a}>{a}</option>)}
@@ -102,7 +119,7 @@ const SpotFuturesAnalyzer = ({ token }) => {
               <button
                 key={tf.value}
                 className={`sfa-tf-btn ${timeframe === tf.value ? 'active' : ''}`}
-                onClick={() => { setTimeframe(tf.value); setAnalysis(null); }}
+                onClick={() => { setTimeframe(tf.value); }}
                 id={`sfa-tf-${tf.value}`}
               >
                 {tf.label}
@@ -111,19 +128,48 @@ const SpotFuturesAnalyzer = ({ token }) => {
           </div>
         </div>
 
-        {/* Run button */}
-        <button
-          id="sfa-analyze-btn"
-          className={`sfa-run-btn ${loading ? 'loading' : ''}`}
-          onClick={runAnalysis}
-          disabled={loading}
-        >
-          {loading ? (
-            <><RefreshCw size={16} className="spinning" /> Analyzing Market...</>
-          ) : (
-            <><Zap size={16} /> Analyze Now</>
+        {/* Run / Cancel buttons */}
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            id="sfa-analyze-btn"
+            className={`sfa-run-btn ${loading ? 'loading' : ''}`}
+            onClick={runAnalysis}
+            disabled={loading}
+            style={{ flex: 1 }}
+          >
+            {loading ? (
+              <><RefreshCw size={16} className="spinning" /> Analyzing Market...</>
+            ) : (
+              <><Zap size={16} /> Analyze Now</>
+            )}
+          </button>
+          
+          {loading && (
+            <button
+              onClick={() => {
+                abortControllerRef.current?.abort();
+                fetch('/api/spot-futures/cancel', {
+                  method: 'POST',
+                  headers: { Authorization: `Bearer ${token}` }
+                }).catch(() => {});
+              }}
+              style={{
+                background: 'transparent',
+                border: '1px solid #ef4444',
+                color: '#ef4444',
+                borderRadius: '8px',
+                padding: '0 16px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontWeight: 600
+              }}
+            >
+              <XCircle size={16} /> Cancel
+            </button>
           )}
-        </button>
+        </div>
       </div>
 
       {/* ── Error State ── */}

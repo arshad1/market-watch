@@ -108,16 +108,40 @@ app.post('/api/options/analyze', authMiddleware, async (req, res) => {
 
 // ── Protected: Spot / Futures ─────────────────────────────────────────────────
 
+let activeSpotControllers = [];
+
 app.post('/api/spot-futures/analyze', authMiddleware, async (req, res) => {
+  const abortController = new AbortController();
+  activeSpotControllers.push(abortController);
+
   try {
     const { asset = 'BTC/USDT', timeframe = '15m' } = req.body;
     console.log(`[webApi] Spot/Futures analysis requested: ${asset} (${timeframe})`);
-    const analysis = await runSpotFuturesAnalysis(asset, timeframe);
-    res.json({ success: true, analysis });
+    
+    const analysis = await runSpotFuturesAnalysis(asset, timeframe, abortController.signal);
+    
+    if (!res.headersSent) {
+      res.json({ success: true, analysis });
+    }
   } catch (err) {
+    if (err.name === 'AbortError') {
+      console.log(`[webApi] Spot/Futures analysis explicitly aborted.`);
+      return;
+    }
     console.error('[webApi] Spot/Futures analyze error:', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  } finally {
+    activeSpotControllers = activeSpotControllers.filter(c => c !== abortController);
   }
+});
+
+app.post('/api/spot-futures/cancel', authMiddleware, (req, res) => {
+  console.log('[webApi] Received explicit cancel request from client.');
+  activeSpotControllers.forEach(c => c.abort());
+  activeSpotControllers = [];
+  res.json({ success: true });
 });
 
 // ── 404 for unmatched /api/* routes ──────────────────────────────────────────

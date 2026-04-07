@@ -11,18 +11,18 @@ const BASE = 'https://api.binance.com/api/v3';
 /**
  * Fetch rich OHLCV data for a symbol across multiple timeframes
  */
-async function fetchMultiTimeframeData(symbol = 'BTCUSDT') {
+async function fetchMultiTimeframeData(symbol = 'BTCUSDT', signal) {
   const cleanSymbol = symbol.replace(/[^A-Z0-9]/g, '').toUpperCase();
 
   console.log(`[spotFuturesEngine] Fetching data for ${cleanSymbol}...`);
   const [ticker, k5m, k15m, k1h, k4h, depthRes, aggTradesRes] = await Promise.all([
-    axios.get(`${BASE}/ticker/24hr?symbol=${cleanSymbol}`),
-    axios.get(`${BASE}/klines?symbol=${cleanSymbol}&interval=5m&limit=200`),
-    axios.get(`${BASE}/klines?symbol=${cleanSymbol}&interval=15m&limit=200`),
-    axios.get(`${BASE}/klines?symbol=${cleanSymbol}&interval=1h&limit=200`),
-    axios.get(`${BASE}/klines?symbol=${cleanSymbol}&interval=4h&limit=100`),
-    axios.get(`https://fapi.binance.com/fapi/v1/depth?symbol=${cleanSymbol}&limit=100`).catch(() => ({ data: { bids: [], asks: [] } })),
-    axios.get(`https://fapi.binance.com/fapi/v1/aggTrades?symbol=${cleanSymbol}&limit=1000`).catch(() => ({ data: [] }))
+    axios.get(`${BASE}/ticker/24hr?symbol=${cleanSymbol}`, { signal }),
+    axios.get(`${BASE}/klines?symbol=${cleanSymbol}&interval=5m&limit=200`, { signal }),
+    axios.get(`${BASE}/klines?symbol=${cleanSymbol}&interval=15m&limit=200`, { signal }),
+    axios.get(`${BASE}/klines?symbol=${cleanSymbol}&interval=1h&limit=200`, { signal }),
+    axios.get(`${BASE}/klines?symbol=${cleanSymbol}&interval=4h&limit=100`, { signal }),
+    axios.get(`https://fapi.binance.com/fapi/v1/depth?symbol=${cleanSymbol}&limit=100`, { signal }).catch(() => ({ data: { bids: [], asks: [] } })),
+    axios.get(`https://fapi.binance.com/fapi/v1/aggTrades?symbol=${cleanSymbol}&limit=1000`, { signal }).catch(() => ({ data: [] }))
   ]);
 
   // allForceOrders is deprecated and removed by Binance
@@ -96,7 +96,7 @@ function formatRange(low, high) {
   return `${r2(low)} - ${r2(high)}`;
 }
 
-async function fetchCryptoCompareNews(assetCode, apiKey, logPrefix) {
+async function fetchCryptoCompareNews(assetCode, apiKey, logPrefix, signal) {
   const maxAttempts = 2;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -111,7 +111,8 @@ async function fetchCryptoCompareNews(assetCode, apiKey, logPrefix) {
         headers: {
           authorization: `Apikey ${apiKey}`
         },
-        timeout: 12000
+        timeout: 12000,
+        signal
       });
 
       return res.data?.Data || [];
@@ -329,7 +330,7 @@ function normalizeAssetForNews(asset) {
 /**
  * Fetch news context via CryptoCompare
  */
-async function fetchNewsContext(asset) {
+async function fetchNewsContext(asset, signal) {
   const apiKey = process.env.CRYPTOCOMPARE_API_KEY;
   if (!apiKey || apiKey === 'your_cryptocompare_api_key_here') {
     console.warn('[spotFuturesEngine] CryptoCompare API key missing. Skipping news fetch.');
@@ -339,7 +340,7 @@ async function fetchNewsContext(asset) {
   try {
     const assetCode = normalizeAssetForNews(asset);
     console.log(`[spotFuturesEngine] Fetching CryptoCompare news for ${asset} (category: ${assetCode})`);
-    const results = await fetchCryptoCompareNews(assetCode, apiKey, 'spotFuturesEngine');
+    const results = await fetchCryptoCompareNews(assetCode, apiKey, 'spotFuturesEngine', signal);
     const headlines = results
       .filter(item => Array.isArray(item.categories?.split?.('|'))
         ? item.categories.split('|').includes(assetCode)
@@ -358,7 +359,7 @@ async function fetchNewsContext(asset) {
 /**
  * Main function: run full multi-strategy analysis with AI verdict
  */
-async function runSpotFuturesAnalysis(asset = 'BTC/USDT', timeframe = '15m') {
+async function runSpotFuturesAnalysis(asset = 'BTC/USDT', timeframe = '15m', signal) {
   if (!process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY === 'your_deepseek_api_key_here') {
     throw new Error('DeepSeek API Key not configured.');
   }
@@ -379,7 +380,7 @@ async function runSpotFuturesAnalysis(asset = 'BTC/USDT', timeframe = '15m') {
   console.log(`[spotFuturesEngine] Fetching data for ${symbol}...`);
 
   // Fetch real market data from Binance
-  const { ticker, k5m, k15m, k1h, k4h, orderFlow } = await fetchMultiTimeframeData(symbol);
+  const { ticker, k5m, k15m, k1h, k4h, orderFlow } = await fetchMultiTimeframeData(symbol, signal);
 
   // Use 15m as primary timeframe for analysis
   const candleMap = { '5m': k5m, '15m': k15m, '1h': k1h, '4h': k4h };
@@ -401,7 +402,7 @@ async function runSpotFuturesAnalysis(asset = 'BTC/USDT', timeframe = '15m') {
     : h >= 8 && h < 16 ? 'London / EU Session'
       : 'Asia Session';
 
-  const newsContext = await fetchNewsContext(asset);
+  const newsContext = await fetchNewsContext(asset, signal);
 
   const dataMap = {
     ASSET: asset,
@@ -461,14 +462,14 @@ async function runSpotFuturesAnalysis(asset = 'BTC/USDT', timeframe = '15m') {
     const quantTemplateStr = fs.readFileSync(path.join(__dirname, '..', 'prompts', 'agent_spot_quant.txt'), 'utf8');
     const quantPrompt = PromptTemplate.fromTemplate(quantTemplateStr);
     const quantChain = quantPrompt.pipe(model).pipe(stringParser);
-    const quantAnalysis = await quantChain.invoke(dataMap);
+    const quantAnalysis = await quantChain.invoke(dataMap, { signal });
 
     // 2. Risk Agent
     console.log(`[spotFuturesEngine] Running Risk Agent...`);
     const riskTemplateStr = fs.readFileSync(path.join(__dirname, '..', 'prompts', 'agent_spot_risk.txt'), 'utf8');
     const riskPrompt = PromptTemplate.fromTemplate(riskTemplateStr);
     const riskChain = riskPrompt.pipe(model).pipe(stringParser);
-    const riskAnalysis = await riskChain.invoke({ ...dataMap, QUANT_ANALYSIS: quantAnalysis });
+    const riskAnalysis = await riskChain.invoke({ ...dataMap, QUANT_ANALYSIS: quantAnalysis }, { signal });
 
     // 3. Formatter Agent (JSON)
     console.log(`[spotFuturesEngine] Running Formatter Agent...`);
@@ -476,7 +477,7 @@ async function runSpotFuturesAnalysis(asset = 'BTC/USDT', timeframe = '15m') {
     const formatterPrompt = PromptTemplate.fromTemplate(formatterTemplateStr);
     const formatterChain = formatterPrompt.pipe(model).pipe(stringParser); // Keep as string parser to clean JSON
     
-    let rawJson = await formatterChain.invoke({ ...dataMap, QUANT_ANALYSIS: quantAnalysis, RISK_ANALYSIS: riskAnalysis });
+    let rawJson = await formatterChain.invoke({ ...dataMap, QUANT_ANALYSIS: quantAnalysis, RISK_ANALYSIS: riskAnalysis }, { signal });
     
     // Clean JSON if the model outputs markdown blocks
     rawJson = rawJson.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -497,7 +498,9 @@ async function runSpotFuturesAnalysis(asset = 'BTC/USDT', timeframe = '15m') {
     };
 
   } catch (error) {
-    console.error('[spotFuturesEngine] Multi-Agent Engine Error:', error);
+    if (error.name !== 'AbortError' && error.message !== 'canceled') {
+      console.error('[spotFuturesEngine] Multi-Agent Engine Error:', error);
+    }
     throw error;
   }
 }
