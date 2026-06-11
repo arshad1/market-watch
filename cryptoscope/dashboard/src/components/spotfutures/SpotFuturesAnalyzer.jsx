@@ -7,6 +7,7 @@ import {
 import VerdictCard from './VerdictCard';
 import StrategySignals from './StrategySignals';
 import IndicatorGrid from './IndicatorGrid';
+import LiveChart from './LiveChart';
 
 const ASSETS = [
   'BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT',
@@ -171,6 +172,9 @@ const SpotFuturesAnalyzer = ({ token }) => {
           )}
         </div>
       </div>
+
+      {/* ── Live Market Chart ── */}
+      <LiveChart asset={asset} timeframe={timeframe} token={token} />
 
       {/* ── Error State ── */}
       {error && (

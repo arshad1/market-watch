@@ -108,6 +108,51 @@ app.post('/api/options/analyze', authMiddleware, async (req, res) => {
 
 // ── Protected: Spot / Futures ─────────────────────────────────────────────────
 
+app.get('/api/candles', authMiddleware, async (req, res) => {
+  try {
+    const { asset = 'BTC/USDT', timeframe = '15m' } = req.query;
+    
+    // Map asset (e.g. BTC/USDT) to Delta symbol (e.g. BTCUSD)
+    let symbol = asset.replace('/USDT', 'USD');
+    if (!symbol.endsWith('USD') && !symbol.endsWith('USDT')) {
+      symbol = symbol + 'USD';
+    }
+    symbol = symbol.replace('/', '');
+
+    const resolution = timeframe;
+    const axios = require('axios');
+    
+    let multiplier = 60;
+    if (resolution === '5m') multiplier = 5 * 60;
+    else if (resolution === '15m') multiplier = 15 * 60;
+    else if (resolution === '1h') multiplier = 60 * 60;
+    else if (resolution === '4h') multiplier = 4 * 60 * 60;
+
+    const end = Math.floor(Date.now() / 1000);
+    const start = end - (multiplier * 150);
+
+    const url = 'https://api.india.delta.exchange/v2/history/candles';
+    
+    const response = await axios.get(url, {
+      params: {
+        symbol,
+        resolution,
+        start,
+        end
+      }
+    });
+
+    let candles = response.data.result || [];
+    // Sort chronologically (oldest first)
+    candles.sort((a, b) => a.time - b.time);
+
+    res.json({ success: true, result: candles });
+  } catch (err) {
+    console.error('[webApi] Error fetching candles:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 let activeSpotControllers = [];
 
 app.post('/api/spot-futures/analyze', authMiddleware, async (req, res) => {
