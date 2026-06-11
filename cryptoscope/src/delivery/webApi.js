@@ -5,6 +5,7 @@ const fs = require('fs');
 const { getRecentBriefs, initDb } = require('../data/database');
 const { analyzeStrategy, STRATEGIES, buildMockOptionsChain } = require('../optionsEngine');
 const { runSpotFuturesAnalysis } = require('../spotFuturesEngine');
+const { generateAiForecast } = require('../aiForecastEngine');
 const { runPipeline } = require('../briefPipeline');
 const { router: authRouter, authMiddleware } = require('../auth');
 
@@ -187,6 +188,21 @@ app.post('/api/spot-futures/cancel', authMiddleware, (req, res) => {
   activeSpotControllers.forEach(c => c.abort());
   activeSpotControllers = [];
   res.json({ success: true });
+});
+
+// ── AI Forecast Engine Route ───────────────────────────────────────────────
+app.post('/api/ai/forecast', authMiddleware, async (req, res) => {
+  try {
+    const { asset, timeframe, recentCandles, knnMatches, forward } = req.body;
+    if (!asset || !recentCandles) {
+      return res.status(400).json({ success: false, error: 'Missing required payload data' });
+    }
+    const result = await generateAiForecast({ asset, timeframe, recentCandles, knnMatches, forward });
+    res.json({ success: true, result });
+  } catch (err) {
+    console.error('[webApi] /api/ai/forecast error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // ── 404 for unmatched /api/* routes ──────────────────────────────────────────

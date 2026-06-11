@@ -877,6 +877,7 @@ export function calculateKNNProjection(candles, lookback = 14, forward = 10, k =
   // Calculate average forward trajectory
   // We look at the 'forward' candles AFTER the historical pattern matched
   const forwardTrajectoriesNorm = [];
+  const matches = [];
   
   for (let neighbor of topK) {
     const idx = neighbor.index;
@@ -890,6 +891,11 @@ export function calculateKNNProjection(candles, lookback = 14, forward = 10, k =
       traj.push((futurePrice - basePrice) / basePrice);
     }
     forwardTrajectoriesNorm.push(traj);
+    matches.push({
+      distance: neighbor.distance,
+      historicalIndex: endOfPatternIdx,
+      subsequentPath: traj.map(t => basePrice * (1 + t)) // Denormalized prices for context
+    });
   }
   
   // Average the normalized trajectories
@@ -914,5 +920,5 @@ export function calculateKNNProjection(candles, lookback = 14, forward = 10, k =
     projection.push(currentPrice * (1 + avgTrajNorm[f]));
   }
   
-  return { projection };
+  return { projection, matches };
 }

@@ -141,18 +141,58 @@ const LiveChart = ({ asset, timeframe, token }) => {
   const [pinePlots, setPinePlots] = useState([]);
   const [pineErrors, setPineErrors] = useState([]);
 
+  // LLM Forecast State
+  const [isGeneratingForecast, setIsGeneratingForecast] = useState(false);
+  const [llmAnalysis, setLlmAnalysis] = useState(null);
+
+  const fetchLlmForecast = async () => {
+    if (candles.length === 0) return;
+    setIsGeneratingForecast(true);
+    setLlmAnalysis(null);
+    try {
+      const recentCandles = candles.slice(-50);
+      // Run KNN locally to get matches
+      const { matches } = calculateKNNProjection(candles, settings.aiForecast.lookback, settings.aiForecast.forward, settings.aiForecast.k);
+      
+      const res = await fetch('/api/ai/forecast', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          asset,
+          timeframe,
+          recentCandles,
+          knnMatches: matches,
+          forward: settings.aiForecast.forward
+        })
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed to generate forecast');
+      setLlmAnalysis(data.result);
+    } catch (err) {
+      console.error(err);
+      alert('Error generating LLM forecast: ' + err.message);
+    } finally {
+      setIsGeneratingForecast(false);
+    }
+  };
+
   // ── Chart Refs ──
   const chartContainerRef = useRef(null);
   const rsiContainerRef = useRef(null);
   const macdContainerRef = useRef(null);
   const sqzContainerRef = useRef(null);
   const stochRsiContainerRef = useRef(null);
+  const llmSentimentContainerRef = useRef(null);
 
   const chartRef = useRef(null);
   const rsiChartRef = useRef(null);
   const macdChartRef = useRef(null);
   const sqzChartRef = useRef(null);
   const stochRsiChartRef = useRef(null);
+  const llmSentimentChartRef = useRef(null);
 
   const candleSeriesRef = useRef(null);
   const ema20SeriesRef = useRef(null);
@@ -181,6 +221,7 @@ const LiveChart = ({ asset, timeframe, token }) => {
 
   const atrStopRef = useRef(null);
   const aiForecastRef = useRef(null);
+  const llmSentimentSeriesRef = useRef(null);
 
   // Oscillator series refs
   const rsiSeriesRef = useRef(null);
@@ -211,6 +252,7 @@ const LiveChart = ({ asset, timeframe, token }) => {
   const showMacdPanel = activeIndicators.macd;
   const showSqzPanel = activeIndicators.squeeze;
   const showStochRsiPanel = activeIndicators.stochRsi;
+  const showLlmSentimentPanel = activeIndicators.aiForecast && llmAnalysis?.sentimentScore !== undefined;
 
   // ── Fetch History ──
   useEffect(() => {
@@ -458,6 +500,7 @@ const LiveChart = ({ asset, timeframe, token }) => {
       nwLowerRef.current = null;
       atrStopRef.current = null;
       aiForecastRef.current = null;
+      llmSentimentSeriesRef.current = null;
       pineSeriesRefs.current = {};
       priceLinesRef.current = [];
       candleMarkersRef.current = null;
@@ -465,7 +508,53 @@ const LiveChart = ({ asset, timeframe, token }) => {
   }, [loading, error, deltaSymbol, timeframe]);
 
   // ═════════════════════════════════════
-  // CREATE RSI PANEL
+  // CREATE LLM SENTIMENT PANEL
+  // ═════════════════════════════════════
+  useEffect(() => {
+    if (!showLlmSentimentPanel || !llmSentimentContainerRef.current || !chartRef.current) return;
+
+    const sentimentChart = createChart(llmSentimentContainerRef.current, {
+      width: llmSentimentContainerRef.current.clientWidth,
+      height: 80,
+      layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#94a3b8' },
+      grid: { vertLines: { color: 'rgba(255, 255, 255, 0.02)' }, horzLines: { color: 'rgba(255, 255, 255, 0.02)' } },
+      timeScale: { borderColor: 'rgba(255, 255, 255, 0.08)', timeVisible: true },
+      rightPriceScale: { borderColor: 'rgba(255, 255, 255, 0.08)' }
+    });
+
+    llmSentimentSeriesRef.current = sentimentChart.addSeries(LineSeries, {
+      color: '#f0abfc', lineWidth: 2, title: 'AI Sentiment'
+    });
+
+    // Add neutral 50 line
+    llmSentimentSeriesRef.current.createPriceLine({
+      price: 50, color: 'rgba(255,255,255,0.2)', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false
+    });
+
+    // Sync scroll with main chart
+    const syncCharts = (timeRange) => { if (timeRange) sentimentChart.timeScale().setVisibleRange(timeRange); };
+    chartRef.current.timeScale().subscribeVisibleTimeRangeChange(syncCharts);
+
+    llmSentimentChartRef.current = sentimentChart;
+
+    const handleResize = () => {
+      if (llmSentimentChartRef.current && llmSentimentContainerRef.current) {
+        llmSentimentChartRef.current.applyOptions({ width: llmSentimentContainerRef.current.clientWidth });
+      }
+    };
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (chartRef.current) chartRef.current.timeScale().unsubscribeVisibleTimeRangeChange(syncCharts);
+      sentimentChart.remove();
+      llmSentimentChartRef.current = null;
+      llmSentimentSeriesRef.current = null;
+    };
+  }, [showLlmSentimentPanel]);
+
+  // ═════════════════════════════════════
+  // MAIN DATA UPDATE EFFECT
   // ═════════════════════════════════════
   useEffect(() => {
     if (!showRsiPanel || !rsiContainerRef.current || !chartRef.current) return;
@@ -769,14 +858,23 @@ const LiveChart = ({ asset, timeframe, token }) => {
       atrStopRef.current.applyOptions({ visible: activeIndicators.atrStop, title: activeIndicators.atrStop ? 'ATR Stop' : '' });
     }
 
-    // ══ AI FORECAST (KNN) ══
+    // ══ AI FORECAST (KNN + LLM) ══
     if (aiForecastRef.current) {
       if (activeIndicators.aiForecast) {
-        const { projection } = calculateKNNProjection(candles, settings.aiForecast.lookback, settings.aiForecast.forward, settings.aiForecast.k);
-        if (projection.length > 0) {
+        let pathToPlot = [];
+        
+        if (llmAnalysis && llmAnalysis.projectedPath) {
+          // LLM overrides mathematical average
+          pathToPlot = llmAnalysis.projectedPath;
+        } else {
+          // Mathematical KNN projection
+          const { projection } = calculateKNNProjection(candles, settings.aiForecast.lookback, settings.aiForecast.forward, settings.aiForecast.k);
+          pathToPlot = projection;
+        }
+        
+        if (pathToPlot.length > 0) {
           const forecastData = [];
           const lastCandle = candles[candles.length - 1];
-          // We need a time interval to step forward. Assume interval based on timeframe string roughly
           let tfSeconds = 60; // default 1m
           if (timeframe === '5m') tfSeconds = 300;
           if (timeframe === '15m') tfSeconds = 900;
@@ -784,16 +882,25 @@ const LiveChart = ({ asset, timeframe, token }) => {
           if (timeframe === '4h') tfSeconds = 14400;
           if (timeframe === '1d') tfSeconds = 86400;
           
-          for (let f = 0; f <= settings.aiForecast.forward; f++) {
+          for (let f = 0; f < pathToPlot.length; f++) {
             forecastData.push({
               time: lastCandle.time + (f * tfSeconds),
-              value: projection[f]
+              value: pathToPlot[f]
             });
           }
           aiForecastRef.current.setData(forecastData);
         }
       }
-      aiForecastRef.current.applyOptions({ visible: activeIndicators.aiForecast, title: activeIndicators.aiForecast ? 'AI Forecast' : '' });
+      aiForecastRef.current.applyOptions({ visible: activeIndicators.aiForecast, title: activeIndicators.aiForecast ? (llmAnalysis ? 'LLM Forecast' : 'KNN Forecast') : '' });
+    }
+
+    // ── Update LLM Sentiment Data ──
+    if (llmSentimentSeriesRef.current && llmAnalysis) {
+      const lastCandle = candles[candles.length - 1];
+      llmSentimentSeriesRef.current.setData([
+        { time: lastCandle.time - 86400 * 5, value: llmAnalysis.sentimentScore }, // Mock history point for rendering line
+        { time: lastCandle.time, value: llmAnalysis.sentimentScore }
+      ]);
     }
 
     // ── RSI Panel ──
@@ -1415,10 +1522,46 @@ const LiveChart = ({ asset, timeframe, token }) => {
                   <div ref={stochRsiContainerRef} style={{ width: '100%', height: 120 }} />
                 </div>
               )}
+
+              {/* LLM Sentiment Panel */}
+              {showLlmSentimentPanel && (
+                <div className="sub-panel-container">
+                  <div className="sub-panel-label" style={{color: '#f0abfc'}}>AI Sentiment Gauge (0-100)</div>
+                  <div ref={llmSentimentContainerRef} style={{ width: '100%', height: 80 }} />
+                </div>
+              )}
             </div>
           )}
         </div>
         
+        {/* AI Forecast Overlay Panel */}
+        {activeIndicators.aiForecast && (
+          <div className="ai-forecast-overlay glass-card animate-fade-in" style={{ position: 'absolute', top: '70px', right: '20px', zIndex: 10, padding: '16px', maxWidth: '300px', borderLeft: '3px solid #f0abfc' }}>
+            <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', color: '#f0abfc', margin: 0, fontSize: '0.9rem' }}>
+              <Zap size={16} /> AI Forecast (KNN + LLM)
+            </h4>
+            {llmAnalysis ? (
+              <div style={{ fontSize: '0.8rem', lineHeight: '1.4' }}>
+                <p style={{ margin: '0 0 10px 0', opacity: 0.9 }}>{llmAnalysis.reasoning}</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '10px' }}>
+                  <span>Sentiment Score:</span>
+                  <strong style={{ color: llmAnalysis.sentimentScore > 50 ? '#10b981' : '#ef4444' }}>{llmAnalysis.sentimentScore}</strong>
+                </div>
+              </div>
+            ) : (
+              <p style={{ fontSize: '0.8rem', opacity: 0.7, margin: '0 0 12px 0' }}>Click below to generate an LLM-synthesized forecast based on KNN data.</p>
+            )}
+            <button 
+              className="premium-btn w-100" 
+              onClick={fetchLlmForecast}
+              disabled={isGeneratingForecast}
+              style={{ marginTop: '10px', fontSize: '0.8rem', padding: '6px' }}
+            >
+              {isGeneratingForecast ? '🧠 Synthesizing...' : 'Generate LLM Forecast'}
+            </button>
+          </div>
+        )}
+
         {/* Pine Editor */}
         {showPineEditor && (
           <PineEditor 
