@@ -826,3 +826,93 @@ export function detectSMC(candles, settings) {
 
   return { swings, breaks, fvgs };
 }
+
+// ══════════════════════════════════════════════════════════════
+// 14. AI FORECAST (KNN PATTERN PROJECTION)
+//     Searches historical data for K nearest neighbors to the 
+//     current pattern and averages their forward trajectories
+// ══════════════════════════════════════════════════════════════
+export function calculateKNNProjection(candles, lookback = 14, forward = 10, k = 5) {
+  const n = candles.length;
+  if (n < lookback + forward) return { projection: [] };
+
+  const close = candles.map(c => c.close);
+  
+  // Extract the current pattern (last 'lookback' candles)
+  const currentPattern = close.slice(n - lookback, n);
+  
+  // Normalize a pattern so its first value is 0 (relative percentage change)
+  const normalize = (arr) => {
+    const base = arr[0];
+    return arr.map(val => (val - base) / base);
+  };
+  
+  const currentNorm = normalize(currentPattern);
+  
+  // Array to store similarities: { index, distance }
+  const distances = [];
+  
+  // Search history for similar patterns
+  // We stop at n - lookback - forward so we have enough future data to project
+  for (let i = 0; i < n - lookback - forward - 1; i++) {
+    const histPattern = close.slice(i, i + lookback);
+    const histNorm = normalize(histPattern);
+    
+    // Calculate Euclidean distance
+    let dist = 0;
+    for (let j = 0; j < lookback; j++) {
+      dist += Math.pow(currentNorm[j] - histNorm[j], 2);
+    }
+    dist = Math.sqrt(dist);
+    
+    distances.push({ index: i, distance: dist });
+  }
+  
+  // Sort by distance ascending (closest neighbors first)
+  distances.sort((a, b) => a.distance - b.distance);
+  
+  // Take top K
+  const topK = distances.slice(0, k);
+  
+  // Calculate average forward trajectory
+  // We look at the 'forward' candles AFTER the historical pattern matched
+  const forwardTrajectoriesNorm = [];
+  
+  for (let neighbor of topK) {
+    const idx = neighbor.index;
+    const endOfPatternIdx = idx + lookback - 1;
+    const basePrice = close[endOfPatternIdx];
+    
+    const traj = [];
+    for (let f = 1; f <= forward; f++) {
+      // Relative change from the end of the historical pattern
+      const futurePrice = close[endOfPatternIdx + f];
+      traj.push((futurePrice - basePrice) / basePrice);
+    }
+    forwardTrajectoriesNorm.push(traj);
+  }
+  
+  // Average the normalized trajectories
+  const avgTrajNorm = [];
+  for (let f = 0; f < forward; f++) {
+    let sum = 0;
+    for (let t = 0; t < k; t++) {
+      sum += forwardTrajectoriesNorm[t][f];
+    }
+    avgTrajNorm.push(sum / k);
+  }
+  
+  // Denormalize the average trajectory starting from the current CURRENT price
+  const currentPrice = close[n - 1];
+  const projection = [];
+  
+  // The first point of the projection connects to the current price
+  projection.push(currentPrice);
+  
+  for (let f = 0; f < forward; f++) {
+    // apply the average relative change to the current price
+    projection.push(currentPrice * (1 + avgTrajNorm[f]));
+  }
+  
+  return { projection };
+}

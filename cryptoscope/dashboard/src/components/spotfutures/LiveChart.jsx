@@ -19,7 +19,8 @@ import {
   calculateATRTrailingStop,
   detectLiquiditySweeps,
   calculateVolumeProfile,
-  detectDivergences
+  detectDivergences,
+  calculateKNNProjection
 } from './indicators';
 import PineEditor from './PineEditor';
 
@@ -47,6 +48,13 @@ const INDICATOR_CATEGORIES = {
       { key: 'liqSweep', label: 'Liquidity Sweeps', premium: true },
       { key: 'volProfile', label: 'Volume Profile', premium: true },
       { key: 'divergence', label: 'RSI Divergences', premium: true },
+    ]
+  },
+  aiModels: {
+    label: 'AI Models',
+    icon: Zap,
+    items: [
+      { key: 'aiForecast', label: 'AI Forecast (KNN)', premium: true },
     ]
   },
   oscillators: {
@@ -86,6 +94,7 @@ const LiveChart = ({ asset, timeframe, token }) => {
     macd: false,
     squeeze: false,
     stochRsi: false,
+    aiForecast: true,
   });
 
   const [showPineEditor, setShowPineEditor] = useState(false);
@@ -110,6 +119,7 @@ const LiveChart = ({ asset, timeframe, token }) => {
     macd: { fast: 12, slow: 26, signal: 9, macdColor: '#3b82f6', signalColor: '#ef4444' },
     squeeze: { length: 20, mult: 2.0, lengthKC: 20, multKC: 1.5 },
     stochRsi: { rsiLen: 14, stochLen: 14, kSmooth: 3, dSmooth: 3, kColor: '#3b82f6', dColor: '#ef4444' },
+    aiForecast: { lookback: 14, forward: 10, k: 5, color: '#f0abfc' },
   });
 
   const updateSetting = useCallback((indicator, field, value) => {
@@ -170,6 +180,7 @@ const LiveChart = ({ asset, timeframe, token }) => {
   const nwLowerRef = useRef(null);
 
   const atrStopRef = useRef(null);
+  const aiForecastRef = useRef(null);
 
   // Oscillator series refs
   const rsiSeriesRef = useRef(null);
@@ -407,7 +418,11 @@ const LiveChart = ({ asset, timeframe, token }) => {
 
     // ── ATR Trailing Stop ──
     atrStopRef.current = chart.addSeries(LineSeries, {
-      color: '#10b981', lineWidth: 2, lineStyle: LineStyle.Dotted, title: 'ATR Stop', visible: activeIndicators.atrStop,
+      color: 'transparent', lineWidth: 2, crosshairMarkerVisible: false, title: 'ATR Stop', visible: activeIndicators.atrStop,
+    });
+
+    aiForecastRef.current = chart.addSeries(LineSeries, {
+      color: settings.aiForecast.color, lineStyle: LineStyle.Dashed, lineWidth: 2, title: 'AI Forecast', visible: activeIndicators.aiForecast,
     });
 
     // ── Resize Handler ──
@@ -442,6 +457,7 @@ const LiveChart = ({ asset, timeframe, token }) => {
       nwUpperRef.current = null;
       nwLowerRef.current = null;
       atrStopRef.current = null;
+      aiForecastRef.current = null;
       pineSeriesRefs.current = {};
       priceLinesRef.current = [];
       candleMarkersRef.current = null;
@@ -753,6 +769,33 @@ const LiveChart = ({ asset, timeframe, token }) => {
       atrStopRef.current.applyOptions({ visible: activeIndicators.atrStop, title: activeIndicators.atrStop ? 'ATR Stop' : '' });
     }
 
+    // ══ AI FORECAST (KNN) ══
+    if (aiForecastRef.current) {
+      if (activeIndicators.aiForecast) {
+        const { projection } = calculateKNNProjection(candles, settings.aiForecast.lookback, settings.aiForecast.forward, settings.aiForecast.k);
+        if (projection.length > 0) {
+          const forecastData = [];
+          const lastCandle = candles[candles.length - 1];
+          // We need a time interval to step forward. Assume interval based on timeframe string roughly
+          let tfSeconds = 60; // default 1m
+          if (timeframe === '5m') tfSeconds = 300;
+          if (timeframe === '15m') tfSeconds = 900;
+          if (timeframe === '1h') tfSeconds = 3600;
+          if (timeframe === '4h') tfSeconds = 14400;
+          if (timeframe === '1d') tfSeconds = 86400;
+          
+          for (let f = 0; f <= settings.aiForecast.forward; f++) {
+            forecastData.push({
+              time: lastCandle.time + (f * tfSeconds),
+              value: projection[f]
+            });
+          }
+          aiForecastRef.current.setData(forecastData);
+        }
+      }
+      aiForecastRef.current.applyOptions({ visible: activeIndicators.aiForecast, title: activeIndicators.aiForecast ? 'AI Forecast' : '' });
+    }
+
     // ── RSI Panel ──
     const rsi = calculateRSI(closePrices, settings.rsi.period);
     if (showRsiPanel && rsiSeriesRef.current) {
@@ -966,7 +1009,7 @@ const LiveChart = ({ asset, timeframe, token }) => {
   const isUp = parseFloat(pctChange) >= 0;
 
   // Count active premium indicators
-  const premiumKeys = ['vwap', 'ichimoku', 'supertrend', 'nw', 'atrStop', 'liqSweep', 'volProfile', 'divergence', 'macd', 'squeeze', 'stochRsi', 'smc'];
+  const premiumKeys = ['vwap', 'ichimoku', 'supertrend', 'nw', 'atrStop', 'liqSweep', 'volProfile', 'divergence', 'macd', 'squeeze', 'stochRsi', 'smc', 'aiForecast'];
   const activePremiumCount = premiumKeys.filter(k => activeIndicators[k]).length;
 
   // ═══════════════════════════════
@@ -1086,6 +1129,23 @@ const LiveChart = ({ asset, timeframe, token }) => {
           </div>
           <div className="settings-row"><label>Short Color</label>
             <input type="color" value={settings.atrStop.shortColor} onChange={e => updateSetting('atrStop', 'shortColor', e.target.value)} />
+          </div>
+        </div>
+      ),
+      aiForecast: (
+        <div className="settings-section">
+          <h4><span className="premium-badge">PRO</span> AI Forecast (KNN)</h4>
+          <div className="settings-row"><label>Lookback Pattern</label>
+            <input type="number" min="5" max="50" value={settings.aiForecast.lookback} onChange={e => updateSetting('aiForecast', 'lookback', Math.max(5, parseInt(e.target.value) || 14))} />
+          </div>
+          <div className="settings-row"><label>Forward Projection</label>
+            <input type="number" min="3" max="50" value={settings.aiForecast.forward} onChange={e => updateSetting('aiForecast', 'forward', Math.max(3, parseInt(e.target.value) || 10))} />
+          </div>
+          <div className="settings-row"><label>K Neighbors</label>
+            <input type="number" min="1" max="20" value={settings.aiForecast.k} onChange={e => updateSetting('aiForecast', 'k', Math.max(1, parseInt(e.target.value) || 5))} />
+          </div>
+          <div className="settings-row"><label>Line Color</label>
+            <input type="color" value={settings.aiForecast.color} onChange={e => updateSetting('aiForecast', 'color', e.target.value)} />
           </div>
         </div>
       ),
